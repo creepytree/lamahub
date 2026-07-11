@@ -1,0 +1,182 @@
+{% extends "druids/base.jinja2" %}
+{% block styles %}
+    <link rel="stylesheet" href="{{ base_path }}/static/css/app.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" />
+{% endblock styles %}
+{% block actions %}
+    <druid-select slot="actions" id="endpoint-select" label="Ollama endpoint" placeholder="Endpoint" hidden></druid-select>
+    <span slot="actions" id="endpoint-url" class="df-muted lh-endpoint-url"></span>
+{% endblock actions %}
+{% block content %}
+    <!-- Persistent stats rail (always visible) + tab panels -->
+    <div class="lh-shell">
+        <aside class="lh-stats">
+            <div class="df-card">
+                <div class="df-card-header">Running Models</div>
+                <div class="df-card-body" id="running-models-list">
+                    <span class="df-muted">Loading...</span>
+                </div>
+            </div>
+            <div class="df-card">
+                <div class="df-card-header">Total Models</div>
+                <div class="df-card-body" id="total-models">
+                    <span class="df-muted">Loading...</span>
+                </div>
+            </div>
+            <div class="df-card">
+                <div class="df-card-header">Storage Used</div>
+                <div class="df-card-body" id="total-storage">
+                    <span class="df-muted">Loading...</span>
+                </div>
+            </div>
+            <div class="df-card" id="fixed-models-card" hidden>
+                <div class="df-card-header">Fixed Models</div>
+                <div class="df-card-body" id="fixed-models-list"></div>
+            </div>
+        </aside>
+        <div class="lh-panels">
+            <druid-tabs active="models">
+                <druid-tab panel="models">Models</druid-tab>
+                <druid-tab panel="prompt">Prompt</druid-tab>
+                <druid-tab panel="log">Log</druid-tab>
+            </druid-tabs>
+            <!-- Models tab -->
+            <section class="df-tab-panel active scroll" data-tab-panel="models">
+                <div class="df-card lh-models-card">
+                <div class="df-card-header lh-models-header">
+                    Models
+                    <div class="lh-header-tools">
+                        <druid-search id="model-search-input" placeholder="Search"></druid-search>
+                        <input type="text" id="model-name-input" placeholder="Model name" />
+                        <druid-button variant="soft" id="pull-model-btn">Pull</druid-button>
+                        <druid-icon-button id="reset-sort-btn" icon="arrow-up-wide-narrow" label="Reset sort order"></druid-icon-button>
+                    </div>
+                </div>
+                <div id="pull-status" class="lh-pull-status" hidden>
+                    <div class="lh-pull-row">
+                        <span id="pull-status-text"></span>
+                        <span id="pull-progress-percent" class="df-muted"></span>
+                    </div>
+                    <druid-progress id="pull-progress" value="0" max="100"></druid-progress>
+                </div>
+                <div class="df-card-body scroll lh-table-wrap">
+                    <table class="lh-table sortable" id="models-table">
+                        <thead>
+                            <tr>
+                                <th data-sort="string">Model</th>
+                                <th data-sort="int">Size</th>
+                                <th data-sort="string">Params</th>
+                                <th data-sort="string">Capabilities</th>
+                                <th data-sort="string">Quant</th>
+                                <th class="no-sort lh-actions-col"></th>
+                            </tr>
+                        </thead>
+                        <tbody id="models-list">
+                            <tr>
+                                <td colspan="6" class="df-muted lh-table-placeholder">Loading...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                </div>
+            </section>
+            <!-- Prompt tab -->
+            <section class="df-tab-panel" data-tab-panel="prompt">
+                <div class="df-card fill">
+            <div class="df-card-header lh-chat-header">
+                Chat
+                <druid-select id="chat-model-select" placeholder="Select model..." label="Chat model"></druid-select>
+                <druid-button toggle id="prompt-options-btn">Options</druid-button>
+                <druid-button id="clear-chat-btn" class="lh-push-right">Clear</druid-button>
+            </div>
+            <div id="prompt-options" class="lh-options" hidden>
+                <label>
+                    Temperature
+                    <input type="number" id="opt-temperature" value="0.7" min="0" max="2" step="0.1" />
+                </label>
+                <label>
+                    Top K
+                    <input type="number" id="opt-top-k" value="40" min="1" max="100" step="1" />
+                </label>
+                <label>
+                    Top P
+                    <input type="number" id="opt-top-p" value="0.9" min="0" max="1" step="0.05" />
+                </label>
+                <label>
+                    Repeat Penalty
+                    <input type="number" id="opt-repeat-penalty" value="1.1" min="0" max="2" step="0.1" />
+                </label>
+                <label>
+                    Seed
+                    <input type="number" id="opt-seed" placeholder="Random" min="0" />
+                </label>
+                <label>
+                    Num Predict
+                    <input type="number" id="opt-num-predict" value="4096" min="-1" step="1" />
+                </label>
+                <label>
+                    Num Context
+                    <input type="number" id="opt-num-ctx" value="4096" min="128" step="128" />
+                </label>
+                <div class="lh-options-buttons">
+                    <druid-icon-button id="system-prompt-btn" icon="monitor-cog" label="System prompt"></druid-icon-button>
+                    <druid-icon-button toggle id="thinking-toggle-btn" icon="brain" label="Thinking"></druid-icon-button>
+                </div>
+            </div>
+            <div class="df-card-body lh-chat-body">
+                <div id="chat-messages" class="lh-chat-messages">
+                    <div class="df-muted lh-chat-empty">Select a model and start chatting</div>
+                </div>
+            </div>
+            <div class="df-card-footer lh-chat-footer">
+                <div id="chat-attachments" class="lh-attachments" hidden></div>
+                <div class="lh-chat-inputrow">
+                    <input type="file" id="chat-image-input" accept="image/png,image/jpeg,image/webp" multiple hidden />
+                    <druid-icon-button id="attach-image-btn" icon="image" label="Attach images"></druid-icon-button>
+                    <druid-textarea id="chat-input" rows="1" autosize placeholder="Type your message..."></druid-textarea>
+                    <druid-button variant="primary" id="send-chat-btn">Send</druid-button>
+                </div>
+            </div>
+        </div>
+    </section>
+            <!-- Log tab -->
+            <section class="df-tab-panel" data-tab-panel="log">
+                <druid-log-view src="{{ base_path }}/api/logs" poll="5" boxed heading="Application Log"></druid-log-view>
+            </section>
+        </div>
+    </div>
+    <!-- System prompt dialog -->
+    <dialog class="df-dialog" id="system-prompt-modal">
+        <h3>System Prompt</h3>
+        <druid-textarea id="system-prompt-input"
+                        class="df-dialog-input"
+                        rows="6"
+                        placeholder="Enter a system prompt sent as a system message with each chat query..."></druid-textarea>
+        <div class="df-dialog-actions">
+            <druid-button id="system-prompt-clear">Clear</druid-button>
+            <druid-button variant="primary" id="system-prompt-save">Save</druid-button>
+        </div>
+    </dialog>
+{% endblock content %}
+{% block scripts %}
+    <script>
+        window.LLMM_BASE_PATH = {{ base_path|tojson }};
+    </script>
+    <script src="{{ base_path }}/static/js/socket.io.min.js"></script>
+    <script src="{{ base_path }}/static/js/sortable.min.js"></script>
+    <script src="{{ base_path }}/static/js/markdown-it.min.js"></script>
+    <script src="{{ base_path }}/static/js/highlight.min.js"></script>
+    <script type="module" src="{{ base_path }}/static/js/icons.js"></script>
+    <script src="{{ base_path }}/static/js/utils.js"></script>
+    <script src="{{ base_path }}/static/js/requests.js"></script>
+    <script src="{{ base_path }}/static/js/models.js"></script>
+    <script src="{{ base_path }}/static/js/chat.js"></script>
+    <script src="{{ base_path }}/static/js/endpoints.js"></script>
+    <script src="{{ base_path }}/static/js/app.js" defer></script>
+    <script>
+        // Initialize socket.io
+        var socket = io({
+            path: "{{ base_path }}/socket.io"
+        });
+    </script>
+{% endblock scripts %}

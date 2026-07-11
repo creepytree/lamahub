@@ -1,0 +1,537 @@
+/* lamahub app-specific UI. Everything design-system-shaped (tokens, cards,
+   buttons, tabs, dialogs, toasts, log view) comes from druids; this file only
+   covers the dashboard layout, the models table, chat sizing and markdown
+   rendering. All colors are druids design tokens. */
+
+/* the dashboard is a full-width app surface, not a centered reading column —
+   override the framework's default max-width so it uses the whole viewport */
+main {
+    max-width: none;
+}
+
+/* tab strip lives above the panels (in the right column), not in the navbar */
+.lh-panels > druid-tabs {
+    flex: 0 0 auto;
+    margin-bottom: 12px;
+}
+
+/* [hidden] must beat component/class display rules */
+[hidden] {
+    display: none !important;
+}
+
+/* ---------- persistent stats rail + tab panels ----------
+   The stats rail lives outside the tab panels so it stays visible on every
+   tab. .lh-shell is the flex child of <main> (preserving the height chain
+   that .df-card.fill relies on); the panels stretch in the right column. */
+
+.lh-shell {
+    flex: 1;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: 350px minmax(0, 1fr);
+    gap: 16px;
+}
+
+.lh-panels {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
+@media (max-width: 900px) {
+    .lh-shell {
+        grid-template-columns: 1fr;
+    }
+}
+
+.lh-stats {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    min-height: 0;
+    overflow-y: auto;
+}
+
+.lh-running-item,
+.lh-fixed-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 0;
+    border-bottom: 1px solid var(--border);
+}
+
+.lh-running-item > div:first-child,
+.lh-fixed-item > div:first-child {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.lh-running-item:last-child,
+.lh-fixed-item:last-child {
+    border-bottom: none;
+}
+
+.lh-running-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+/* copyable model names: plain text that acts as a button */
+.model-name-button {
+    border: 0;
+    padding: 0;
+    background: none;
+    color: var(--text);
+    font: inherit;
+    font-weight: 500;
+    text-align: left;
+    cursor: pointer;
+    overflow-wrap: anywhere;
+}
+
+.model-name-label.is-copied {
+    font-style: italic;
+    color: var(--accent);
+}
+
+/* header toolbar (search / pull input / buttons) */
+.lh-models-header {
+    flex-wrap: wrap;
+}
+
+.lh-header-tools {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-left: auto;
+    flex-wrap: wrap;
+}
+
+.lh-header-tools druid-search {
+    width: 160px;
+}
+
+.lh-header-tools input[type="text"] {
+    width: 180px;
+}
+
+/* pull progress strip under the card header */
+.lh-pull-status {
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+    background: var(--accent-soft);
+}
+
+.lh-pull-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    font-size: 0.85rem;
+    margin-bottom: 8px;
+}
+
+/* ---------- models table ---------- */
+
+.lh-table-wrap {
+    padding: 0;
+}
+
+.lh-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+}
+
+.lh-table th,
+.lh-table td {
+    padding: 8px 12px;
+    text-align: left;
+    vertical-align: middle;
+    border-bottom: 1px solid var(--border);
+}
+
+.lh-table thead th {
+    color: var(--accent);
+    font-size: 0.85rem;
+    position: sticky;
+    top: 0;
+    background: var(--bg-raised);
+    z-index: 1;
+}
+
+.lh-table tbody tr:hover {
+    background: var(--bg-hover);
+}
+
+.lh-table-placeholder {
+    text-align: center;
+    padding: 18px 12px;
+}
+
+.lh-row-actions {
+    display: flex;
+    gap: 6px;
+    justify-content: flex-end;
+    align-items: center;
+}
+
+/* icon buttons that act destructively / warningly hover in their own color
+   (druid-icon-button themes via the documented --df-icon-btn-* hooks) */
+druid-icon-button.df-danger {
+    --df-icon-btn-hover-color: var(--danger);
+    --df-icon-btn-hover-bg: var(--danger-soft);
+}
+
+/* badge group: wrap onto multiple rows with an even gap so wrapped pills don't
+   touch (inline badges have no row-gap of their own) */
+.lh-badges {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    vertical-align: middle;
+}
+
+/* pinned models get an accent-filled pin icon */
+druid-icon-button.lh-pin-active {
+    --df-icon-btn-color: var(--accent);
+}
+
+druid-icon-button.lh-pin-active svg {
+    fill: currentColor;
+}
+
+/* env pins are shown but locked */
+.lh-locked {
+    opacity: 0.55;
+    pointer-events: none;
+}
+
+/* sortable.js column headers */
+.sortable th {
+    cursor: pointer;
+    user-select: none;
+}
+
+.sortable th:hover {
+    background: var(--bg-hover);
+}
+
+.sortable th.no-sort {
+    cursor: default;
+}
+
+.sortable th.no-sort:hover {
+    background: var(--bg-raised);
+}
+
+.sortable th[aria-sort="ascending"]::after {
+    content: " ▲";
+    font-size: 0.7em;
+}
+
+.sortable th[aria-sort="descending"]::after {
+    content: " ▼";
+    font-size: 0.7em;
+}
+
+/* update-in-progress spinner on the row's update button */
+druid-icon-button.spinning svg {
+    animation: lh-spin 0.9s linear infinite;
+}
+
+@keyframes lh-spin {
+    from {
+        transform: rotate(0deg);
+    }
+
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* inline update progress row */
+.lh-update-status {
+    padding: 8px 12px;
+    background: var(--accent-soft);
+}
+
+/* ---------- navbar endpoint switcher ---------- */
+
+/* the active endpoint shown as a soft design-token chip beside the switcher:
+   a bordered pill with an accent dot marking the live endpoint */
+.lh-endpoint-url {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    max-width: 300px;
+    padding: 5px 10px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--bg);
+}
+
+.lh-endpoint-url:empty {
+    display: none;
+}
+
+.lh-endpoint-dot {
+    flex-shrink: 0;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.lh-endpoint-url .model-name-button {
+    min-width: 0;
+    font-size: 0.8rem;
+    font-weight: 500;
+    color: var(--text-muted);
+}
+
+.lh-endpoint-url .model-name-label {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* ---------- prompt tab ---------- */
+
+.lh-chat-header {
+    flex-wrap: wrap;
+}
+
+.lh-chat-header druid-select {
+    min-width: 200px;
+}
+
+.lh-push-right {
+    margin-left: auto;
+}
+
+/* collapsible options grid */
+.lh-options {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 10px;
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--border);
+    font-size: 0.85rem;
+}
+
+.lh-options label {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    color: var(--text-muted);
+}
+
+.lh-options input {
+    width: 100%;
+}
+
+.lh-options-buttons {
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
+}
+
+.lh-chat-body {
+    display: flex;
+    flex-direction: column;
+    padding: 0;
+}
+
+.lh-chat-messages {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 14px;
+}
+
+.lh-chat-empty {
+    text-align: center;
+    padding: 30px 0;
+}
+
+.lh-chat-footer {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+}
+
+.lh-chat-inputrow {
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
+}
+
+.lh-chat-inputrow druid-textarea {
+    flex: 1;
+}
+
+/* thinking accordion inside a chat bubble */
+.lh-thinking {
+    margin-bottom: 8px;
+    font-size: 0.85rem;
+}
+
+.lh-thinking summary {
+    cursor: pointer;
+    color: var(--text-muted);
+}
+
+.lh-thinking-body {
+    margin: 6px 0 0 10px;
+    padding-left: 10px;
+    border-left: 2px solid var(--border);
+    color: var(--text-muted);
+}
+
+/* pending image attachments above the chat input */
+.lh-attachments {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.lh-attachment {
+    position: relative;
+}
+
+.lh-attachment img {
+    width: 64px;
+    height: 64px;
+    object-fit: cover;
+    border-radius: calc(var(--radius) - 4px);
+    border: 1px solid var(--border);
+}
+
+.lh-attachment druid-icon-button {
+    position: absolute;
+    top: -8px;
+    right: -8px;
+}
+
+/* images shown inside a sent chat bubble */
+.lh-message-image {
+    max-width: 160px;
+    max-height: 160px;
+    object-fit: cover;
+    border-radius: calc(var(--radius) - 4px);
+    border: 1px solid var(--border);
+    margin: 0 6px 6px 0;
+}
+
+/* ---------- dialogs ---------- */
+
+#system-prompt-modal {
+    width: min(560px, 92vw);
+}
+
+/* ---------- markdown rendering (chat bubbles) ---------- */
+
+.markdown-content {
+    font-size: 0.95rem;
+    line-height: 1.45;
+}
+
+.markdown-content p {
+    margin: 0 0 0.75rem;
+}
+
+.markdown-content p:last-child {
+    margin-bottom: 0;
+}
+
+.markdown-content pre {
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: calc(var(--radius) - 4px);
+    padding: 0.75rem;
+    overflow-x: auto;
+    margin: 0.5rem 0;
+}
+
+.markdown-content code {
+    background: rgba(0, 0, 0, 0.3);
+    padding: 0.125rem 0.25rem;
+    border-radius: 0.25rem;
+    font-size: 0.875em;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.markdown-content pre code {
+    background: transparent;
+    padding: 0;
+    border-radius: 0;
+}
+
+.markdown-content ul,
+.markdown-content ol {
+    margin: 0 0 0.75rem;
+    padding-left: 1.5rem;
+}
+
+.markdown-content li {
+    margin-bottom: 0.25rem;
+}
+
+.markdown-content blockquote {
+    border-left: 3px solid var(--border);
+    padding-left: 1rem;
+    margin: 0.5rem 0;
+    opacity: 0.8;
+}
+
+.markdown-content h1,
+.markdown-content h2,
+.markdown-content h3,
+.markdown-content h4,
+.markdown-content h5,
+.markdown-content h6 {
+    margin: 1rem 0 0.5rem;
+    font-weight: 600;
+}
+
+.markdown-content h1:first-child,
+.markdown-content h2:first-child,
+.markdown-content h3:first-child,
+.markdown-content h4:first-child,
+.markdown-content h5:first-child,
+.markdown-content h6:first-child {
+    margin-top: 0;
+}
+
+.markdown-content a {
+    color: inherit;
+    text-decoration: underline;
+}
+
+.markdown-content table {
+    width: 100%;
+    margin: 0.5rem 0;
+    border-collapse: collapse;
+}
+
+.markdown-content table th,
+.markdown-content table td {
+    border: 1px solid var(--border);
+    padding: 0.5rem;
+}
+
+.markdown-content table th {
+    background: rgba(0, 0, 0, 0.3);
+    font-weight: 600;
+}
+
+.lh-actions-col {
+    width: 110px;
+}

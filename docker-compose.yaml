@@ -1,0 +1,27 @@
+services:
+  lamahub:
+    container_name: lamahub
+    image: bitdruid/lamahub:latest
+    # build:
+    #   context: .
+    #   dockerfile: Dockerfile
+    ports:
+      - 5000:5000
+    environment:
+      # Single endpoint, or a comma-separated list of labeled endpoints (Name=URL).
+      # The first entry is the default and the only one where FIXED_MODELS are managed.
+      # e.g. OLLAMA_URL=Dev=http://dev.ollama...,Prod=http://prod.ollama...
+      - OLLAMA_URL=label=http:port
+      - BASE_PATH=        # Public base path, e.g. /subdir1/app
+      - LOG_LEVEL=DEBUG   # Options: DEBUG, INFO, WARNING, ERROR, CRITICAL
+      # Comma-separated list (llama3.2,mistral); append @<num_ctx> to pin a
+      # context length and keep that model warm-loaded (glm4:9b@96000)
+      - FIXED_MODELS=
+      # Optional static single-user login. Sessions are kept in memory only.
+      - LOGIN=true        # Set false to disable login
+      - LOGIN_USER=admin  # Username
+      - LOGIN_PW=admin    # Password
+      - LOGIN_TIMEOUT=60  # Session idle timeout in minutes
+    volumes:
+      - ./instance:/app/lamahub/instance   # log file + fixed-model pins
+    restart: unless-stopped

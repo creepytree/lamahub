@@ -1,0 +1,53 @@
+[build-system]
+requires = ["hatchling >= 1.26", "hatch-requirements-txt"]
+build-backend = "hatchling.build"
+
+
+[project]
+name = "lamahub"
+version = "1.2.0"
+description = "Web UI to manage Ollama LLM server models"
+requires-python = ">=3.13"
+dynamic = ["dependencies"]
+
+
+[[project.authors]]
+name = "bitdruid"
+email = "bitdruid@outlook.com"
+
+
+[project.urls]
+homepage = "https://github.com/bitdruid/lamahub"
+
+
+[project.scripts]
+lamahub = "lamahub.start:main"
+
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+
+[tool.hatch.metadata.hooks.requirements_txt]
+file = "requirements.txt"
+
+
+[tool.hatch.build.targets.wheel]
+packages = ["lamahub"]
+artifacts = ["lamahub/static/**", "lamahub/templates/**"]
+
+
+[tool.djlint]
+profile = "jinja"
+max_line_length = 120
+max_attribute_length = 120
+format_js = true
+format_css = true
+indent = 20
+use_gitignore = true
+line_break_after_multiline_tag = true
+max_blank_lines = 5
+
+
+[tool.ruff]
+line-length = 120
