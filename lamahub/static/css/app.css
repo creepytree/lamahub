@@ -9,6 +9,21 @@ main {
     max-width: none;
 }
 
+/* content-card header titles read as section titles: larger, accent-colored
+   (matches the accent table heads). Scoped to the tab panels — the rail stat
+   cards keep the framework default. Framework override — logged in GAPS.md as
+   an upstream candidate (opt-in modifier); drop this when druids ships it. */
+.lh-panels .df-card-header {
+    font-size: 1rem;
+    color: var(--accent);
+}
+
+/* rail stat-card names sit quiet in the muted grey (the accent is reserved for
+   the main content section titles) */
+.lh-stats .df-card-header {
+    color: var(--text-muted);
+}
+
 /* tab strip lives above the panels (in the right column), not in the navbar */
 .lh-panels > druid-tabs {
     flex: 0 0 auto;
@@ -156,7 +171,7 @@ main {
 }
 
 .lh-table thead th {
-    color: var(--accent);
+    color: var(--text-muted);
     font-size: 0.85rem;
     position: sticky;
     top: 0;
@@ -173,6 +188,13 @@ main {
     padding: 18px 12px;
 }
 
+/* keep Size and Params on one line (e.g. "395.9 MB" wraps at its space when the
+   column is narrow); the Capabilities column absorbs the freed width */
+#models-table td:nth-child(2),
+#models-table td:nth-child(3) {
+    white-space: nowrap;
+}
+
 .lh-row-actions {
     display: flex;
     gap: 6px;
@@ -185,6 +207,17 @@ main {
 druid-icon-button.df-danger {
     --df-icon-btn-hover-color: var(--danger);
     --df-icon-btn-hover-bg: var(--danger-soft);
+}
+
+/* pin / update / redeploy and the deploy-tab toolbar (non-destructive) icon
+   buttons hover in accent */
+druid-icon-button.lh-pin,
+druid-icon-button.update-btn,
+druid-icon-button.lh-redeploy,
+#hf-reset-sort-btn,
+#hf-clear-results-btn {
+    --df-icon-btn-hover-color: var(--accent);
+    --df-icon-btn-hover-bg: var(--accent-soft);
 }
 
 /* badge group: wrap onto multiple rows with an even gap so wrapped pills don't
@@ -258,6 +291,59 @@ druid-icon-button.spinning svg {
 .lh-update-status {
     padding: 8px 12px;
     background: var(--accent-soft);
+}
+
+/* ---------- deploy tab (HF browse + staged cache) ---------- */
+
+/* browse card stacked over the staged card, panel scrolls as one column.
+   (.df-tab-panel.active already provides the flex column — only add the gap,
+   an unconditional display here would un-hide the inactive panel) */
+.lh-deploy-panel {
+    gap: 16px;
+}
+
+/* wider than the shared 160px header-search so the placeholder fits */
+#hf-search-input {
+    width: 260px;
+}
+
+.lh-hf-row {
+    cursor: pointer;
+}
+
+.lh-hf-link {
+    color: var(--text);
+    font-weight: 500;
+    text-decoration: none;
+}
+
+.lh-hf-link:hover {
+    color: var(--accent);
+    text-decoration: underline;
+}
+
+/* expanded quant sub-table sits on the base shade inside a full-width cell */
+.lh-quant-cell {
+    background: var(--bg);
+    padding: 4px 12px 10px 32px;
+}
+
+.lh-quant-table {
+    font-size: 0.85rem;
+}
+
+.lh-quant-table td {
+    padding: 5px 12px;
+}
+
+.lh-quant-table tr:last-child td {
+    border-bottom: none;
+}
+
+.lh-load-more {
+    display: flex;
+    justify-content: center;
+    padding: 10px;
 }
 
 /* ---------- navbar endpoint switcher ---------- */

@@ -17,11 +17,14 @@ services:
       # Comma-separated list (llama3.2,mistral); append @<num_ctx> to pin a
       # context length and keep that model warm-loaded (glm4:9b@96000)
       - FIXED_MODELS=
+      # hf deployment
+      - HF_STAGING_MAX_GB=100 # default 100gb, 0=unlimited
+      - HF_TOKEN= # raises api limits and shows gated repos
       # Optional static single-user login. Sessions are kept in memory only.
       - LOGIN=true        # Set false to disable login
       - LOGIN_USER=admin  # Username
       - LOGIN_PW=admin    # Password
       - LOGIN_TIMEOUT=60  # Session idle timeout in minutes
     volumes:
-      - ./instance:/app/lamahub/instance   # log file + fixed-model pins
+      - ./instance:/app/lamahub/instance   # log file + fixed-model pins + staged hf downloads
     restart: unless-stopped

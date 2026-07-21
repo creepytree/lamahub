@@ -54,6 +54,7 @@ def set_pin(model_name: str, num_ctx: int | None) -> None:
         pins = _read(_STORE_FILE, "fixed-model store")
         pins[model_name] = {"num_ctx": num_ctx}
         _write(_STORE_FILE, pins)
+    logger.info(f"Fixed-model store: pinned {model_name} (num_ctx={num_ctx})")
 
 
 def remove_pin(model_name: str) -> bool:
@@ -64,7 +65,8 @@ def remove_pin(model_name: str) -> bool:
             return False
         del pins[model_name]
         _write(_STORE_FILE, pins)
-        return True
+    logger.info(f"Fixed-model store: unpinned {model_name}")
+    return True
 
 
 # ---------------------------------------------------------------------------
@@ -89,6 +91,7 @@ def set_baseline(model_name: str, num_ctx: int | None, default_ctx: int | None) 
         baselines = _read(_BASELINE_FILE, "ctx baseline store")
         baselines[model_name] = {"num_ctx": num_ctx, "default_ctx": default_ctx}
         _write(_BASELINE_FILE, baselines)
+    logger.info(f"Captured ctx baseline for {model_name}: num_ctx={num_ctx}, default_ctx={default_ctx}")
 
 
 def remove_baseline(model_name: str) -> None:

@@ -33,10 +33,15 @@
                 <div class="df-card-header">Fixed Models</div>
                 <div class="df-card-body" id="fixed-models-list"></div>
             </div>
+            <div class="df-card" id="staged-card" hidden>
+                <div class="df-card-header">Staged Downloads</div>
+                <div class="df-card-body" id="staged-summary"></div>
+            </div>
         </aside>
         <div class="lh-panels">
             <druid-tabs active="models">
                 <druid-tab panel="models">Models</druid-tab>
+                <druid-tab panel="deploy">Deploy</druid-tab>
                 <druid-tab panel="prompt">Prompt</druid-tab>
                 <druid-tab panel="log">Log</druid-tab>
             </druid-tabs>
@@ -47,7 +52,7 @@
                     Models
                     <div class="lh-header-tools">
                         <druid-search id="model-search-input" placeholder="Search"></druid-search>
-                        <input type="text" id="model-name-input" placeholder="Model name" />
+                        <input type="text" id="model-name-input" placeholder="Ollama pull" />
                         <druid-button variant="soft" id="pull-model-btn">Pull</druid-button>
                         <druid-icon-button id="reset-sort-btn" icon="arrow-up-wide-narrow" label="Reset sort order"></druid-icon-button>
                     </div>
@@ -78,6 +83,74 @@
                         </tbody>
                     </table>
                 </div>
+                </div>
+            </section>
+            <!-- Deploy tab: HF GGUF browse + staged download cache -->
+            <section class="df-tab-panel scroll lh-deploy-panel" data-tab-panel="deploy">
+                <div class="df-card lh-deploy-browse">
+                    <div class="df-card-header lh-models-header">
+                        HuggingFace GGUF
+                        <div class="lh-header-tools">
+                            <druid-search id="hf-search-input" placeholder="Search (e.g. qwen 122)"></druid-search>
+                            <druid-button variant="soft" id="hf-search-btn">Search</druid-button>
+                            <druid-icon-button id="hf-reset-sort-btn" icon="arrow-up-wide-narrow" label="Reset sort order"></druid-icon-button>
+                            <druid-icon-button id="hf-clear-results-btn" icon="x" label="Clear results"></druid-icon-button>
+                        </div>
+                    </div>
+                    <div id="hf-deploy-status" class="lh-pull-status" hidden>
+                        <div class="lh-pull-row">
+                            <span id="hf-deploy-status-text"></span>
+                            <span id="hf-deploy-progress-percent" class="df-muted"></span>
+                        </div>
+                        <druid-progress id="hf-deploy-progress" value="0" max="100"></druid-progress>
+                    </div>
+                    <div class="df-card-body scroll lh-table-wrap">
+                        <table class="lh-table sortable" id="hf-results-table">
+                            <thead>
+                                <tr>
+                                    <th data-sort="string">Model</th>
+                                    <th data-sort="string">Provider</th>
+                                    <th data-sort="string">Type</th>
+                                    <th data-sort="int">Quants</th>
+                                    <th data-sort="string">Updated</th>
+                                    <th data-sort="int">Downloads</th>
+                                </tr>
+                            </thead>
+                            <tbody id="hf-results">
+                                <tr>
+                                    <td colspan="6" class="df-muted lh-table-placeholder">Search HuggingFace for GGUF models to deploy</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                        <div class="lh-load-more">
+                            <druid-button id="hf-load-more-btn" hidden>Load more</druid-button>
+                        </div>
+                    </div>
+                </div>
+                <div class="df-card lh-deploy-staged">
+                    <div class="df-card-header">
+                        Staged Downloads
+                        <span id="staged-usage" class="df-muted"></span>
+                    </div>
+                    <div class="df-card-body lh-table-wrap">
+                        <table class="lh-table sortable" id="staged-table">
+                            <thead>
+                                <tr>
+                                    <th data-sort="string">Repo / Quant</th>
+                                    <th data-sort="int">Size</th>
+                                    <th data-sort="int">Shards</th>
+                                    <th data-sort="string">Status</th>
+                                    <th data-sort="string">Endpoints</th>
+                                    <th class="no-sort lh-actions-col"></th>
+                                </tr>
+                            </thead>
+                            <tbody id="staged-list">
+                                <tr>
+                                    <td colspan="6" class="df-muted lh-table-placeholder">Nothing staged</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             </section>
             <!-- Prompt tab -->
@@ -170,6 +243,7 @@
     <script src="{{ base_path }}/static/js/utils.js"></script>
     <script src="{{ base_path }}/static/js/requests.js"></script>
     <script src="{{ base_path }}/static/js/models.js"></script>
+    <script src="{{ base_path }}/static/js/deploy.js"></script>
     <script src="{{ base_path }}/static/js/chat.js"></script>
     <script src="{{ base_path }}/static/js/endpoints.js"></script>
     <script src="{{ base_path }}/static/js/app.js" defer></script>

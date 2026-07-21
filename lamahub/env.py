@@ -85,6 +85,8 @@ class EnvConfig:
     login_user: str
     login_password: str
     login_timeout: int  # session lifetime in minutes
+    hf_token: str  # optional HuggingFace token: raises API limits, unlocks gated repos
+    hf_staging_max_gb: int  # hard cap on the HF shard staging cache (0 = unlimited)
 
 
 def load_env() -> EnvConfig:
@@ -100,6 +102,8 @@ def load_env() -> EnvConfig:
         login_user=_get_str("LOGIN_USER"),
         login_password=_get_str("LOGIN_PW"),
         login_timeout=_get_int("LOGIN_TIMEOUT", 60),
+        hf_token=_get_str("HF_TOKEN"),
+        hf_staging_max_gb=_get_int("HF_STAGING_MAX_GB", 100),
     )
 
 

@@ -1,14 +1,16 @@
 """REST API endpoints for interacting with Ollama models."""
 
+import asyncio
 from typing import Any
 
 from fastapi import APIRouter, Depends, Header
 from fastapi.responses import StreamingResponse
 
+from lamahub.env import env
 from lamahub.extensions import logger
 from lamahub.services.endpoints import Endpoint, registry
 from lamahub.services.ollama import normalize_model_name, ollama_service
-from lamahub.services import fixed_store
+from lamahub.services import fixed_store, hf_deploy, staging_store
 
 api = APIRouter(prefix="/api")
 
@@ -211,6 +213,65 @@ async def generate(data: dict[str, Any], endpoint: Endpoint = Depends(resolve_en
             yield f"data: {line}\n\n"
 
     return StreamingResponse(stream_response(), media_type="text/event-stream")
+
+
+# ---------------------------------------------------------------------------
+# HF sharded-GGUF deploy (see HF_DEPLOY_DESIGN.md)
+
+
+@api.get("/hf/search")
+async def hf_search(q: str = "", cursor: str = ""):
+    """Search GGUF repos on HuggingFace (cursor-paginated)."""
+    return await hf_deploy.search_models(q, cursor)
+
+
+@api.get("/hf/repo/{repo:path}/quants")
+async def hf_repo_quants(repo: str):
+    """List a repo's quant families with sizes and shard counts."""
+    return {"quants": await hf_deploy.repo_quants(repo)}
+
+
+@api.post("/hf/deploy")
+async def hf_deploy_model(data: dict[str, Any], endpoint: Endpoint = Depends(resolve_endpoint)):
+    """Start a deploy as a detached background task; observe via /hf/deploy/status.
+
+    Decoupled from this request so a browser reload or tab close doesn't abort a
+    long (multi-GB) download. Serialized: only one deploy runs at a time.
+    """
+    repo = data.get("repo")
+    family = data.get("family")
+    model_name = (data.get("model_name") or "").strip()
+    if not repo or not family or not model_name:
+        return {"status": "error", "message": "repo, family and model_name are required"}
+    if hf_deploy.deploy_active:
+        return {"status": "error", "message": "Another deploy is already running"}
+    # set the guard synchronously (before any await) so a concurrent start can't race in
+    hf_deploy.deploy_active = True
+    logger.info(f"Deploying HF {repo} [{family}] as {model_name} on {endpoint.url}")
+    asyncio.create_task(hf_deploy.run_deploy(endpoint.url, repo, family, model_name))
+    return {"status": "started", "model_name": model_name}
+
+
+@api.get("/hf/deploy/status")
+async def hf_deploy_status():
+    """Live progress of the in-flight (or last) deploy, for the client poll."""
+    return hf_deploy.current_deploy or {"active": False}
+
+
+@api.get("/hf/staging")
+async def hf_staging():
+    """List staged shard families in the local download cache."""
+    return {"families": staging_store.list_staged(), "max_gb": env.hf_staging_max_gb}
+
+
+@api.delete("/hf/staging/{family_id}")
+async def hf_prune_staging(family_id: str):
+    """Prune one staged family from the local cache (models on Ollama keep their blobs)."""
+    if hf_deploy.deploy_active:
+        return {"status": "error", "message": "Cannot prune while a deploy is running"}
+    if staging_store.prune(family_id):
+        return {"status": "success"}
+    return {"status": "error", "message": "Not staged"}
 
 
 @api.post("/models/update")

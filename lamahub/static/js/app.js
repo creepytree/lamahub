@@ -88,6 +88,7 @@ document.addEventListener("DOMContentLoaded", function () {
     initSystemPrompt();
     initThinking();
     initChatAttachments();
+    initDeployTab();
 });
 
 // Socket.io event handlers
