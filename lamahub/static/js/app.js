@@ -23,7 +23,7 @@ document.addEventListener("DOMContentLoaded", function () {
     loadEndpoints().then(refreshAllData);
 
     // Set up refresh intervals
-    setInterval(() => loadRunningModels(), 4000);
+    setInterval(() => loadRunningModels(), 5000);
     setInterval(() => {
         loadTotalModels();
         loadTotalStorage();
@@ -99,7 +99,9 @@ if (typeof socket !== "undefined") {
 
     socket.on("model_update", function (data) {
         console.log("Model update received:", data);
-        loadFixedModels().then(loadModelsList);
+        // loadStaged after the models refresh so the Deploy tab's "deployed"
+        // badges reflect a model that was just added or deleted
+        loadFixedModels().then(loadModelsList).then(loadStaged);
         loadRunningModels();
         loadTotalModels();
         loadTotalStorage();

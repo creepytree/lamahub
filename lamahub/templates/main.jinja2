@@ -187,8 +187,11 @@
                     Num Predict
                     <input type="number" id="opt-num-predict" value="4096" min="-1" step="1" />
                 </label>
-                <label>
-                    Num Context
+                <label id="opt-num-ctx-label">
+                    <span class="lh-ctx-label">
+                        Num Context
+                        <span class="lh-ctx-lock" hidden>🔒 pinned</span>
+                    </span>
                     <input type="number" id="opt-num-ctx" value="4096" min="128" step="128" />
                 </label>
                 <div class="lh-options-buttons">

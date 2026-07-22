@@ -74,7 +74,7 @@ async function hfSearch(loadMore = false) {
             <td data-sort="${escapeHtml(item.id.toLowerCase())}"><a class="lh-hf-link" href="https://huggingface.co/${repoAttr}" target="_blank" rel="noopener">${escapeHtml(item.id)}</a>${gated}</td>
             <td data-sort="${escapeHtml(item.author.toLowerCase())}">${escapeHtml(item.author)}</td>
             <td>${pipeline}</td>
-            <td data-sort="${item.quant_count}"><span class="df-muted">${item.quant_count} ▾</span></td>
+            <td data-sort="${item.quant_count}"><button type="button" class="lh-quant-count-btn">${item.quant_count} ▾</button></td>
             <td data-sort="${escapeHtml(item.updated)}">${formatDate(item.updated)}</td>
             <td data-sort="${item.downloads}">${formatCount(item.downloads)}</td>
         </tr>
@@ -135,58 +135,165 @@ function clearHfResults() {
     hfLastQuery = "";
 }
 
+// Quant list opens in a popover anchored to the quant-count button, styled to
+// match the druid-select dropdown (dark --df-select-bg, accent border,
+// --radius). Deploy = clicking a quant row (opens the model-name confirm
+// dialog). It's a popover="manual" so we own dismissal: outside-click + Esc,
+// but NOT scroll (an earlier close-on-scroll felt abrupt). The outside-click
+// handler ignores the count button so clicking it toggles via toggleQuantRow
+// instead of being eaten as a dismiss. druids has no popover primitive (see
+// GAPS.md) — hand-rolled on the native Popover API.
+let quantPopover = null;
+let quantAnchor = null; // the count button the popover is currently anchored to
+
 /**
- * Toggle a repo row's quant sub-table (lazy-fetched, cached).
- * @param {HTMLTableRowElement} row - The clicked repo row.
+ * Mark a count button active (accent-bordered "open" look) and clear any
+ * previously active one. Pass null to clear.
+ * @param {HTMLElement|null} anchor - The button to mark active.
  */
-async function toggleQuantRow(row) {
-    const existing = row.nextElementSibling;
-    if (existing && existing.classList.contains("lh-quant-row")) {
-        existing.remove();
+function setActiveQuantAnchor(anchor) {
+    if (quantAnchor && quantAnchor !== anchor) quantAnchor.classList.remove("is-active");
+    quantAnchor = anchor || null;
+    if (anchor) anchor.classList.add("is-active");
+}
+
+/** Lazily create the shared quant popover element (appended to <body>). */
+function getQuantPopover() {
+    if (quantPopover) return quantPopover;
+    const pop = document.createElement("div");
+    pop.id = "hf-quant-popover";
+    pop.className = "lh-quant-popover";
+    pop.setAttribute("popover", "manual");
+    document.body.appendChild(pop);
+    quantPopover = pop;
+
+    document.addEventListener("pointerdown", (e) => {
+        if (!pop.matches(":popover-open")) return;
+        // clicks on the popover or a count button are handled elsewhere
+        if (e.target.closest("#hf-quant-popover") || e.target.closest(".lh-quant-count-btn")) return;
+        hideQuantPopover();
+    });
+    document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape" && pop.matches(":popover-open")) hideQuantPopover();
+    });
+    // Scrolling *outside* the popover detaches it from its anchor button, so
+    // close it. capture:true catches scrolls on inner containers (scroll events
+    // don't bubble); an internal scroll of the popover's own list is ignored.
+    window.addEventListener(
+        "scroll",
+        (e) => {
+            if (!pop.matches(":popover-open")) return;
+            if (e.target instanceof Node && pop.contains(e.target)) return;
+            hideQuantPopover();
+        },
+        true,
+    );
+    window.addEventListener("resize", hideQuantPopover);
+    return pop;
+}
+
+/** Hide the quant popover if open and clear the active button state. */
+function hideQuantPopover() {
+    if (quantPopover && quantPopover.matches(":popover-open")) quantPopover.hidePopover();
+    setActiveQuantAnchor(null);
+}
+
+/**
+ * Place the popover just to the LEFT of the anchor button (flipping to its
+ * right only if there's no room). Vertically it aligns TOP borders with the
+ * button; if it would overflow the viewport bottom it flips to align BOTTOM
+ * borders instead (opening upward).
+ * @param {HTMLElement} pop - The (already shown) popover.
+ * @param {HTMLElement} anchor - The quant-count button.
+ */
+function positionQuantPopover(pop, anchor) {
+    const r = anchor.getBoundingClientRect();
+    const gap = 6;
+    const margin = 8;
+    const pw = pop.offsetWidth;
+    const ph = pop.offsetHeight;
+
+    // horizontal: open to the left of the button; flip right if it won't fit
+    let left = r.left - gap - pw;
+    if (left < margin) left = r.right + gap;
+    if (left + pw > window.innerWidth - margin) left = Math.max(margin, window.innerWidth - pw - margin);
+
+    // vertical: align top borders; flip to bottom-aligned when short on space
+    let top = r.top;
+    if (top + ph > window.innerHeight - margin) top = r.bottom - ph;
+    if (top < margin) top = margin;
+
+    pop.style.left = `${left}px`;
+    pop.style.top = `${top}px`;
+}
+
+/**
+ * Deploy a quant chosen from the popover: close it, then open the model-name
+ * confirm dialog (deployQuant).
+ */
+function selectQuant(repo, family, label) {
+    hideQuantPopover();
+    deployQuant(repo, family, label);
+}
+
+/**
+ * Open the quant popover anchored to the quant-count button (lazy-fetched,
+ * cached). Clicking a quant row inside it starts the deploy.
+ * @param {HTMLTableRowElement} row - The repo row owning the button.
+ * @param {HTMLElement} anchor - The quant-count button to anchor against.
+ */
+async function toggleQuantRow(row, anchor) {
+    const repo = row.dataset.repo;
+    const pop = getQuantPopover();
+
+    // Clicking the same button while open toggles it closed.
+    if (pop.matches(":popover-open") && pop.dataset.repo === repo) {
+        hideQuantPopover();
         return;
     }
 
-    const repo = row.dataset.repo;
-    const quantRow = document.createElement("tr");
-    quantRow.className = "lh-quant-row";
-    quantRow.innerHTML =
-        '<td colspan="6" class="lh-quant-cell"><span class="df-muted">Loading quants...</span></td>';
-    row.after(quantRow);
+    setActiveQuantAnchor(anchor);
+    pop.dataset.repo = repo;
+    pop.innerHTML = '<div class="lh-quant-pop-empty df-muted">Loading quants…</div>';
+    pop.showPopover();
+    positionQuantPopover(pop, anchor);
 
     if (!hfQuantsCache[repo]) {
         const data = await fetchAPI(`/hf/repo/${repo}/quants`);
         hfQuantsCache[repo] = data.quants || [];
     }
-    const quants = hfQuantsCache[repo];
+    // Bail if the user closed it or opened another repo while we fetched.
+    if (!pop.matches(":popover-open") || pop.dataset.repo !== repo) return;
 
+    const quants = hfQuantsCache[repo];
     if (!quants.length) {
-        quantRow.firstElementChild.innerHTML = '<span class="df-muted">No deployable GGUF files</span>';
+        pop.innerHTML = '<div class="lh-quant-pop-empty df-muted">No deployable GGUF files</div>';
+        positionQuantPopover(pop, anchor);
         return;
     }
 
     const repoAttr = escapeHtml(repo).replace(/"/g, "&quot;");
-    quantRow.firstElementChild.innerHTML = `
-        <table class="lh-table lh-quant-table">
-            <tbody>
-                ${quants
-                    .map((quant) => {
-                        const famAttr = escapeHtml(quant.family).replace(/"/g, "&quot;");
-                        const labelAttr = escapeHtml(quant.label).replace(/"/g, "&quot;");
-                        return `
-                <tr>
-                    <td><span class="df-badge">${escapeHtml(quant.label)}</span></td>
-                    <td>${formatBytes(quant.total_size)}</td>
-                    <td>${quant.shards.length} shard${quant.shards.length === 1 ? "" : "s"}</td>
-                    <td class="no-sort">
-                        <druid-button variant="soft"
-                                onclick="deployQuant('${repoAttr}', '${famAttr}', '${labelAttr}')">Deploy</druid-button>
-                    </td>
+    pop.innerHTML = `
+        <table class="lh-quant-poptable"><tbody>
+            ${quants
+                .map((quant) => {
+                    const famAttr = escapeHtml(quant.family).replace(/"/g, "&quot;");
+                    const labelAttr = escapeHtml(quant.label).replace(/"/g, "&quot;");
+                    const shardText = `${quant.shards.length} shard${quant.shards.length === 1 ? "" : "s"}`;
+                    return `
+                <tr class="lh-quant-pop-row"
+                        onclick="selectQuant('${repoAttr}', '${famAttr}', '${labelAttr}')"
+                        title="Deploy ${escapeHtml(quant.label)}">
+                    <td><span class="df-badge lh-quant-label">${escapeHtml(quant.label)}</span></td>
+                    <td class="lh-quant-meta lh-quant-size">${formatBytes(quant.total_size)}</td>
+                    <td class="lh-quant-meta">${shardText}</td>
                 </tr>`;
-                    })
-                    .join("")}
-            </tbody>
-        </table>
+                })
+                .join("")}
+        </tbody></table>
     `;
+    // Re-anchor now that the real content set the final size.
+    positionQuantPopover(pop, anchor);
 }
 
 let deployPollTimer = null;
@@ -263,8 +370,10 @@ async function pollDeployStatus() {
         } else if (data && data.model) {
             showNotification(`Deployed "${data.model}" successfully!`, "success");
         }
+        // refresh models first so loadStaged sees the just-deployed model in the
+        // cache (otherwise the fresh family would flash as "removed")
+        await loadModelsList();
         loadStaged();
-        loadModelsList();
         loadTotalModels();
         loadTotalStorage();
         return;
@@ -299,6 +408,21 @@ async function loadStaged() {
     stagedById = Object.fromEntries(families.map((family) => [family.id, family]));
     const totalBytes = families.reduce((sum, family) => sum + (family.disk_size || 0), 0);
 
+    // Verify "deployed" families against what actually lives on the active
+    // endpoint: if the model was deleted since, flip the badge to "removed" so
+    // the stale state is visible and the redeploy action reads as meaningful.
+    // Scoped to the active endpoint (families remember which endpoints they
+    // reached) so a model deployed only elsewhere isn't wrongly flagged. Reuses
+    // the models list cached by loadModelsList (no extra fetch); when it hasn't
+    // loaded yet the check is simply skipped until the next refresh.
+    const activeEndpoint = getSelectedEndpoint();
+    // Compare names case-INSENSITIVELY: Ollama canonicalizes a known quant tag
+    // on create (we send "qwen3-0.6b:q4_k_m", /api/tags reports it back as
+    // "qwen3-0.6b:Q4_K_M"), so the meta.model_name we stored can differ in case
+    // from the registered name. A case-sensitive Set.has() then wrongly reports
+    // a live model as "removed". Lower-casing both sides fixes that.
+    const modelSet = lastModels ? new Set(lastModels.map((m) => m.name.toLowerCase())) : null;
+
     if (usage) {
         usage.textContent = families.length
             ? `${formatBytes(totalBytes)}${data.max_gb ? ` / ${data.max_gb} GB cap` : ""}`
@@ -326,19 +450,32 @@ async function loadStaged() {
             const shards = family.shards || [];
             const shardCount = shards.length;
             const doneShards = shards.filter((shard) => shard.sha256).length;
+            // a deployed family whose model is no longer on the (active) endpoint
+            // reads as "removed" — it dropped off the server and wants a redeploy
+            let status = family.status;
+            const modelKey = (family.model_name || "").toLowerCase();
+            if (
+                status === "deployed" &&
+                modelSet &&
+                (family.endpoints || []).includes(activeEndpoint) &&
+                !modelSet.has(modelKey) &&
+                !modelSet.has(`${modelKey}:latest`)
+            ) {
+                status = "removed";
+            }
             // "downloading" that isn't the live deploy = an interrupted pull; the
             // done/total shard count makes the real state visible and shows it is
             // resumable (re-deploy continues via download-resume + blob dedupe)
             const statusLabel =
-                family.status === "downloading"
+                status === "downloading"
                     ? `downloading ${doneShards}/${shardCount}`
-                    : escapeHtml(family.status || "-");
+                    : escapeHtml(status || "-");
             return `
         <tr>
             <td data-sort="${idAttr.toLowerCase()}">${escapeHtml(family.repo)} <span class="df-badge">${escapeHtml(family.quant)}</span></td>
             <td data-sort="${family.disk_size || 0}">${formatBytes(family.disk_size || 0)}</td>
             <td data-sort="${shardCount}">${shardCount}</td>
-            <td><span class="df-badge${family.status === "deployed" ? " ok" : family.status === "downloading" ? " warn" : ""}">${statusLabel}</span></td>
+            <td><span class="df-badge${status === "deployed" ? " ok" : status === "downloading" ? " warn" : status === "removed" ? " warn" : ""}">${statusLabel}</span></td>
             <td class="df-muted">${endpoints}</td>
             <td class="no-sort">
                 <div class="lh-row-actions">
@@ -420,26 +557,26 @@ async function initDeployTab() {
         clearResultsBtn.addEventListener("click", clearHfResults);
     }
 
-    // expand/collapse quant sub-rows; ignore clicks on the repo link
-    const results = document.getElementById("hf-results");
-    if (results) {
-        results.addEventListener("click", (event) => {
-            if (event.target.closest("a")) return;
-            const row = event.target.closest(".lh-hf-row");
-            if (row) toggleQuantRow(row);
-        });
-    }
-
-    // sorting reorders plain rows: collapse open quant sub-rows first so they
-    // can't be scrambled away from their repo row (sortable.js emits sort-start)
+    // The quant-count button opens the popover, anchored to itself. Delegate
+    // from the TABLE, not the tbody (#hf-results): sortable.min.js sorts by
+    // replacing the tbody with a clone (cloneNode + replaceChild), which drops
+    // any listener bound to the tbody — so it would die after the first sort.
+    // The table element is stable across sorts.
     const resultsTable = document.getElementById("hf-results-table");
     if (resultsTable) {
-        resultsTable.addEventListener("sort-start", () => {
-            resultsTable.querySelectorAll(".lh-quant-row").forEach((row) => row.remove());
+        resultsTable.addEventListener("click", (event) => {
+            const btn = event.target.closest(".lh-quant-count-btn");
+            if (!btn) return;
+            const row = btn.closest(".lh-hf-row");
+            if (row) toggleQuantRow(row, btn);
         });
+        // sorting moves the button the popover was anchored to: close it so it
+        // can't linger over a moved row (sortable.js emits sort-start)
+        resultsTable.addEventListener("sort-start", hideQuantPopover);
     }
 
-    loadStaged();
+    // note: loadStaged is driven by refreshAllData (after the models cache warms)
+    // so the "deployed" badges verify against a loaded model list, not a cold one
 
     // if a deploy is still running (e.g. the page was reloaded mid-download),
     // re-attach the progress strip to it

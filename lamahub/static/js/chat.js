@@ -193,9 +193,11 @@ function getPromptMode() {
 
 /**
  * Get prompt options from the UI.
+ * @param {string} [model] - The selected model name. When it is a pinned
+ *   (fixed) model, num_ctx is deliberately omitted (see below).
  * @returns {Object} Options object for Ollama API
  */
-function getPromptOptions() {
+function getPromptOptions(model) {
     const options = {};
 
     const temperature = document.getElementById("opt-temperature");
@@ -228,12 +230,53 @@ function getPromptOptions() {
         options.num_predict = parseInt(numPredict.value);
     }
 
+    // num_ctx is intentionally NOT sent for pinned models. The server keeps a
+    // pinned model resident at its *baked* context via reconcile_fixed_ctx
+    // (a keep_alive:-1 warm-load, re-asserted every ~30s — see
+    // services/ollama.py). Ollama keys a runner by model+context: sending a
+    // different num_ctx here would spin up a SECOND runner at that size and
+    // evict the warm one, forcing a full reload of the (possibly huge) model
+    // and silently overriding the pin. So for a pinned model we let the baked
+    // default apply and omit num_ctx entirely; syncCtxLockForModel() also locks
+    // the field in the UI so the value shown matches what actually applies.
     const numCtx = document.getElementById("opt-num-ctx");
-    if (numCtx && numCtx.value) {
+    if (numCtx && numCtx.value && !(model && isFixedModel(model))) {
         options.num_ctx = parseInt(numCtx.value);
     }
 
     return options;
+}
+
+/**
+ * Lock the num_ctx field to the pin when a fixed model is selected.
+ * A pinned model is held resident at its baked context by the server; letting
+ * the user set a conflicting num_ctx here would just reload the model at the
+ * wrong size (see getPromptOptions). So we reflect the pinned value and disable
+ * the field for fixed models, and re-enable it for everything else.
+ */
+function syncCtxLockForModel() {
+    const select = document.getElementById("chat-model-select");
+    const numCtx = document.getElementById("opt-num-ctx");
+    if (!select || !numCtx) return;
+
+    const label = document.getElementById("opt-num-ctx-label");
+    const lock = label?.querySelector(".lh-ctx-lock");
+    const entry = getFixedEntry(select.value);
+
+    if (entry && entry.num_ctx) {
+        numCtx.value = entry.num_ctx;
+        numCtx.disabled = true;
+        // The "why" lives in a native hover tooltip (druids has no tooltip
+        // component — see FRAMEWORK_GAPS.md); an inline note broke the layout.
+        numCtx.title = `Locked to the pinned context (${entry.num_ctx}). Unpin the model to change it.`;
+        label?.classList.add("lh-ctx-locked");
+        if (lock) lock.hidden = false;
+    } else {
+        numCtx.disabled = false;
+        numCtx.title = "";
+        label?.classList.remove("lh-ctx-locked");
+        if (lock) lock.hidden = true;
+    }
 }
 
 /**
@@ -256,6 +299,14 @@ async function loadChatModelSelect() {
     if (currentValue && data.models.some((m) => m.name === currentValue)) {
         select.value = currentValue;
     }
+
+    // Keep the num_ctx field in sync with the (possibly restored) selection and
+    // wire a one-time change listener so switching models locks/unlocks it.
+    if (!select.dataset.ctxLockWired) {
+        select.addEventListener("change", syncCtxLockForModel);
+        select.dataset.ctxLockWired = "1";
+    }
+    syncCtxLockForModel();
 }
 
 /**
@@ -318,7 +369,26 @@ function renderChatMessages() {
         if (el) el.open = true;
     });
 
-    container.scrollTop = container.scrollHeight;
+    scrollChatToBottom(container);
+}
+
+/**
+ * Scroll the chat container to the newest message.
+ *
+ * <druid-chat-message> is a custom element whose shadow DOM upgrades and lays
+ * out asynchronously, so scrollHeight read synchronously after an innerHTML
+ * rebuild is still stale (near zero) — a plain `scrollTop = scrollHeight` then
+ * lands at the TOP, which looked like the chat "jumping to the start" on send.
+ * Deferring past layout (double rAF covers the element upgrade) scrolls to the
+ * real bottom so the view follows the conversation.
+ * @param {HTMLElement} container - The chat messages container.
+ */
+function scrollChatToBottom(container) {
+    requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+            container.scrollTop = container.scrollHeight;
+        });
+    });
 }
 
 /**
@@ -421,7 +491,7 @@ async function sendMessage(message, images = []) {
     const modelSelect = document.getElementById("chat-model-select");
     const sendBtn = document.getElementById("send-chat-btn");
     const model = modelSelect?.value;
-    const options = getPromptOptions();
+    const options = getPromptOptions(model);
 
     if (!model) {
         showNotification("Please select a model first", "warning");

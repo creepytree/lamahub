@@ -6,6 +6,10 @@
 
 let fixedModels = [];
 let fixedModelsLoaded = false;
+// Last /models payload for the active endpoint, cached from loadModelsList so
+// other views (e.g. the Deploy tab's staged table) can reuse it without a
+// second fetch. Refreshed on every models reload; null until the first load.
+let lastModels = null;
 
 function normalizeModelName(modelName) {
     const trimmedName = String(modelName || "").trim();
@@ -367,9 +371,12 @@ async function loadModelsList() {
     const data = await fetchAPI("/models");
 
     if (data.error) {
+        lastModels = null;
         container.innerHTML = `<tr><td colspan="6" class="lh-table-placeholder df-danger">Error: ${escapeHtml(data.error)}</td></tr>`;
         return;
     }
+
+    lastModels = data.models || [];
 
     if (!data.models || data.models.length === 0) {
         container.innerHTML = '<tr><td colspan="6" class="df-muted lh-table-placeholder">No models installed</td></tr>';
@@ -557,7 +564,9 @@ async function deleteModel(modelName) {
 
     if (result.status === "success") {
         showNotification(`Model "${modelName}" deleted successfully!`, "success");
-        loadModelsList();
+        // refresh the staged badges too (after the models cache updates) so a
+        // just-deleted deployed model flips to "removed" without a reload
+        loadModelsList().then(loadStaged);
     } else {
         showNotification(`Error deleting model: ${result.message}`, "danger");
     }

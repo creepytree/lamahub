@@ -19,9 +19,11 @@ main {
 }
 
 /* rail stat-card names sit quiet in the muted grey (the accent is reserved for
-   the main content section titles) */
+   the main content section titles), and drop the header divider so the small
+   cards read as one calm block instead of a stack of ruled boxes */
 .lh-stats .df-card-header {
     color: var(--text-muted);
+    border-bottom: none;
 }
 
 /* tab strip lives above the panels (in the right column), not in the navbar */
@@ -214,6 +216,7 @@ druid-icon-button.df-danger {
 druid-icon-button.lh-pin,
 druid-icon-button.update-btn,
 druid-icon-button.lh-redeploy,
+druid-icon-button.lh-deploy-btn,
 #hf-reset-sort-btn,
 #hf-clear-results-btn {
     --df-icon-btn-hover-color: var(--accent);
@@ -323,21 +326,100 @@ druid-icon-button.spinning svg {
 }
 
 /* expanded quant sub-table sits on the base shade inside a full-width cell */
-.lh-quant-cell {
-    background: var(--bg);
-    padding: 4px 12px 10px 32px;
+/* Quant-count button. At rest: a quiet neutral-bordered button — clearly
+   clickable, but not shouting. When its popover is open (.is-active): the
+   accent-bordered dropdown look (dark bg, accent border) so you can see which
+   button is currently open. Hover hints the accent border. */
+.lh-quant-count-btn {
+    padding: 4px 10px;
+    background: var(--bg-raised);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text);
+    font: inherit;
+    font-size: 0.85rem;
+    white-space: nowrap;
+    cursor: pointer;
 }
 
-.lh-quant-table {
+.lh-quant-count-btn:hover {
+    background: var(--bg-hover);
+    border-color: var(--df-accent, var(--accent));
+}
+
+.lh-quant-count-btn.is-active {
+    background: var(--df-select-bg, var(--bg));
+    border-color: var(--df-accent, var(--accent));
+}
+
+/* Quant list popover, positioned in JS anchored to the quant-count button.
+   Styled to match the druid-select dropdown (dark --df-select-bg, accent
+   border, --radius). Block + width:max-content so the inner table drives the
+   width (columns fit content); top-layer via the native popover. */
+.lh-quant-popover {
+    position: fixed;
+    inset: auto; /* override the UA default (centered); JS sets left/top */
+    margin: 0;
+    width: max-content;
+    max-width: 92vw;
+    padding: 4px;
+    max-height: 300px;
+    overflow: auto;
+    background: var(--df-select-bg, var(--bg));
+    border: 1px solid var(--df-accent, var(--accent));
+    border-radius: var(--radius);
+    box-shadow: var(--shadow, 0 8px 28px rgba(0, 0, 0, 0.35));
+}
+
+/* Aligned columns: label / size / shards stack under each other. Columns size
+   to content (width:auto + nowrap cells). */
+.lh-quant-poptable {
+    width: auto;
+    border-collapse: collapse;
     font-size: 0.85rem;
 }
 
-.lh-quant-table td {
-    padding: 5px 12px;
+.lh-quant-pop-row {
+    cursor: pointer;
 }
 
-.lh-quant-table tr:last-child td {
-    border-bottom: none;
+.lh-quant-pop-row td {
+    padding: 6px 10px;
+    white-space: nowrap;
+    vertical-align: middle;
+}
+
+.lh-quant-pop-row:hover td {
+    background: var(--bg-hover);
+}
+
+/* Round only the row's outer corners so the hover reads as one clean pill
+   across the whole row, not a rounded box per cell. */
+.lh-quant-pop-row td:first-child {
+    border-top-left-radius: calc(var(--radius) - 4px);
+    border-bottom-left-radius: calc(var(--radius) - 4px);
+}
+
+.lh-quant-pop-row td:last-child {
+    border-top-right-radius: calc(var(--radius) - 4px);
+    border-bottom-right-radius: calc(var(--radius) - 4px);
+}
+
+/* right-align the size column so the numbers line up */
+.lh-quant-size {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+.lh-quant-pop-empty {
+    padding: 8px 10px;
+    font-size: 0.85rem;
+    white-space: nowrap;
+}
+
+.lh-quant-meta {
+    color: var(--text-muted);
+    white-space: nowrap;
 }
 
 .lh-load-more {
@@ -428,6 +510,33 @@ druid-icon-button.spinning svg {
     display: flex;
     align-items: flex-end;
     gap: 8px;
+}
+
+/* Num Context lock: shown when a pinned model is selected. The field is
+   disabled because a pinned model's ctx is fixed by its Modelfile bake (see
+   syncCtxLockForModel / bake_ctx); make that obvious instead of leaving a dead,
+   unclickable input the user has to guess about. */
+.lh-ctx-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.lh-ctx-lock {
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    color: var(--accent);
+    background: var(--accent-soft);
+    padding: 1px 6px;
+    border-radius: 999px;
+}
+
+/* Make the disabled input read as "locked", not broken. */
+.lh-ctx-locked input {
+    cursor: not-allowed;
+    opacity: 0.7;
+    border-color: var(--accent-soft);
 }
 
 .lh-chat-body {

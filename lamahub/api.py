@@ -47,14 +47,17 @@ async def get_endpoints():
 @api.get("/models")
 async def get_models(endpoint: Endpoint = Depends(resolve_endpoint)):
     """Get list of all available models"""
-    logger.debug(f"Fetching all models from {endpoint.url}")
+    # Deliberately not logged: the dashboard polls this on a timer (~30s), so a
+    # log line here just floods the log with noise that carries no diagnostic
+    # value. Mutations (pull/delete/pin/deploy) below are logged instead.
     return await ollama_service.list_models(endpoint.url)
 
 
 @api.get("/models/running")
 async def get_running_models(endpoint: Endpoint = Depends(resolve_endpoint)):
     """Get currently running models"""
-    logger.debug(f"Fetching running models from {endpoint.url}")
+    # Deliberately not logged: polled every ~4s by the running-models widget.
+    # See the note on get_models above.
     return await ollama_service.get_running_models(endpoint.url)
 
 

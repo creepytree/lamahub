@@ -96,7 +96,10 @@ def load_env() -> EnvConfig:
         fixed_models=fixed_models,
         fixed_model_ctx=fixed_model_ctx,
         instance_dir=_get_str("INSTANCE_DIR"),
-        log_level=_get_str("LOG_LEVEL", "DEBUG").upper(),
+        # Default to INFO: DEBUG is opt-in for troubleshooting. At DEBUG the
+        # per-request debug lines (model info fetches, reconcile detail, etc.)
+        # make the Log tab hard to read; set LOG_LEVEL=DEBUG to get them back.
+        log_level=_get_str("LOG_LEVEL", "INFO").upper(),
         ollama_url=_get_str("OLLAMA_URL", "http://localhost:11434"),
         login_enabled=_get_bool("LOGIN"),
         login_user=_get_str("LOGIN_USER"),

@@ -43,6 +43,12 @@ _quants_cache: dict[str, tuple[float, list[dict]]] = {}
 _SEARCH_TTL = 90.0
 _QUANTS_TTL = 600.0
 
+# Long multi-GB pulls routinely hit a dropped connection ("peer closed
+# connection without sending complete message body"). Each shard download is
+# retried in place — it resumes from the bytes already on disk via a Range
+# request, so a retry costs nothing already fetched.
+_DL_RETRIES = 6
+
 
 def _hf_headers() -> dict[str, str]:
     headers = {"User-Agent": "lamahub"}
@@ -322,20 +328,53 @@ async def deploy_family(base_url: str, repo: str, family: str, model_name: str):
                     f"Downloading shard {index}/{total_shards}: "
                     f"{os.path.basename(shard['name'])} ({shard['size'] / 1e9:.2f} GB)"
                 )
-                async for event in _download_shard(hf_client, repo, shard, dest):
-                    if event[0] == "sha256":
-                        digests[shard["name"]] = event[1]
-                    else:
+                attempt = 0
+                while True:
+                    try:
+                        async for event in _download_shard(hf_client, repo, shard, dest):
+                            if event[0] == "sha256":
+                                digests[shard["name"]] = event[1]
+                            else:
+                                yield json.dumps(
+                                    {
+                                        "stage": "download",
+                                        "status": f"downloading {os.path.basename(shard['name'])} ({index}/{total_shards})",
+                                        "shard": index,
+                                        "total_shards": total_shards,
+                                        "completed": event[0],
+                                        "total": event[1],
+                                    }
+                                )
+                        break  # shard finished cleanly
+                    except httpx.TransportError as e:
+                        # network/stream drop mid-download — resume from the partial
+                        # file (a Range request) rather than losing what we have
+                        attempt += 1
+                        have = os.path.getsize(dest) if os.path.exists(dest) else 0
+                        if attempt > _DL_RETRIES:
+                            raise RuntimeError(
+                                f"download failed after {_DL_RETRIES} retries "
+                                f"({os.path.basename(shard['name'])}): {e}"
+                            ) from e
+                        wait = min(2**attempt, 30)
+                        logger.warning(
+                            f"Shard download interrupted at {have / 1e9:.2f}/{shard['size'] / 1e9:.2f} GB "
+                            f"({e}); retry {attempt}/{_DL_RETRIES} in {wait}s (resuming)"
+                        )
                         yield json.dumps(
                             {
                                 "stage": "download",
-                                "status": f"downloading {os.path.basename(shard['name'])} ({index}/{total_shards})",
+                                "status": (
+                                    f"reconnecting {os.path.basename(shard['name'])} "
+                                    f"({index}/{total_shards}) — retry {attempt}/{_DL_RETRIES}"
+                                ),
                                 "shard": index,
                                 "total_shards": total_shards,
-                                "completed": event[0],
-                                "total": event[1],
+                                "completed": have,
+                                "total": shard["size"],
                             }
                         )
+                        await asyncio.sleep(wait)
                 for entry in meta["shards"]:
                     if entry["name"] == shard["name"]:
                         entry["sha256"] = digests[shard["name"]]

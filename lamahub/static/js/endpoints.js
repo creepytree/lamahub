@@ -13,7 +13,9 @@ function refreshAllData() {
     loadRunningModels();
     loadTotalModels();
     loadTotalStorage();
-    loadFixedModels().then(loadModelsList);
+    // loadStaged after loadModelsList so the Deploy tab's "deployed" badges are
+    // verified against a warm model cache (see lastModels in models.js)
+    loadFixedModels().then(loadModelsList).then(loadStaged);
     loadChatModelSelect();
 }
 

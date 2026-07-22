@@ -122,6 +122,20 @@ class OllamaService:
         Captures the effective default (min of the server's OLLAMA_CONTEXT_LENGTH
         and the model's native max) that a plain, ctx-omitting request resolves
         to. Must be called before baking, while the model is still pristine.
+
+        WHY THIS EXISTS (and why we can't skip it and "just bake what we want"):
+        Baking sets the model's default num_ctx via `create from=self`. When the
+        user later UNPINS, we want to put the model back exactly how it was —
+        offline, without a registry pull. That is easy if the model already had
+        an explicit `num_ctx` PARAMETER (we saved it, we re-bake it). But if the
+        model had NO explicit num_ctx it relied on the server default
+        (OLLAMA_CONTEXT_LENGTH, clamped to native max), and Ollama's
+        `create from=self` cannot *unset* an inherited parameter — you can only
+        set a value. So to make unpin faithful we must record the NUMBER that the
+        server default resolved to, and the only reliable way to read it is to
+        load the model once and inspect /api/ps `context_length`. Hence the
+        one-shot load with keep_alive:30s. This runs exactly once per model (see
+        ensure_baked_ctx: guarded by `baseline is None`), not on every reconcile.
         """
         try:
             async with httpx.AsyncClient(timeout=self.timeout) as client:
@@ -146,6 +160,24 @@ class OllamaService:
         model name unchanged. This makes num_ctx the model's default, honored by
         every client that does not send an explicit num_ctx, overriding the
         server's OLLAMA_CONTEXT_LENGTH. Purely local — no registry access.
+
+        WHY BAKE INSTEAD OF JUST WARM-LOADING WITH THE DESIRED num_ctx:
+        A warm-load (`keep_alive:-1` + options.num_ctx) pins only the ONE runner
+        instance we loaded. Ollama keys a runner by model+effective options, so
+        the moment ANY other client hits the model with a different or ABSENT
+        num_ctx (e.g. every /v1 OpenAI-compatible client — they can't send it —
+        or any external tool that omits it), Ollama spins a separate runner at
+        that size and evicts ours. So a warm-load-only pin is defeated by the
+        first ctx-omitting request from anything we don't control. Baking makes
+        num_ctx the model's *default*, so those ctx-omitting requests resolve to
+        the pinned value instead of evicting it — the pin becomes universal
+        (native + /v1) and durable across restarts. The keep_alive:-1 warm-load
+        still runs, but only for RESIDENCY (see reconcile_fixed_ctx), layered on
+        top of the bake — it does NOT carry num_ctx. The one case baking cannot
+        cover is a client sending an EXPLICIT, different num_ctx (precedence:
+        explicit > Modelfile > env); only a rewriting proxy could, which we
+        deliberately did not build (keeps lamahub a control-plane, not a
+        data-plane).
         """
         try:
             async with httpx.AsyncClient(timeout=self.timeout) as client:
@@ -238,6 +270,21 @@ class OllamaService:
         Reverts models we baked that are no longer pinned (GC), bakes the pinned
         ones to their (clamped) context, and keeps each pinned model resident so
         a chat that displaced it gets warm-loaded back — now at the baked default.
+
+        RESIDENCY KEEPER: the load_model call below is what actually keeps a
+        pinned model in memory. It is NOT the pin/bake step and NOT the browser —
+        it is this server-side loop (started as maintain_fixed_models in app.py,
+        every ~30s). load_model uses keep_alive:-1, so once loaded the model
+        never idle-evicts; if something unloads it (manual unload, or a request
+        with a different num_ctx spinning a separate runner), the next pass
+        reloads it at the baked ctx. That is why a pinned model "comes back" a
+        few seconds after you unload it.
+
+        CAVEAT — residency is checked by NAME, not by context. If a chat loads
+        the model at a *different* num_ctx, /api/ps still lists the name, so this
+        loop considers it resident and won't correct the ctx. Preventing that is
+        the chat client's job: it omits num_ctx for pinned models (see
+        getPromptOptions in static/js/chat.js) so it never displaces this runner.
         """
         ctx_map = self.effective_fixed_ctx()
         pinned = {self._normalize_model_name(name) for name in ctx_map}
@@ -258,6 +305,11 @@ class OllamaService:
         for model_name, num_ctx in ctx_map.items():
             await self.ensure_baked_ctx(base_url, model_name, num_ctx)
             if self._normalize_model_name(model_name) not in loaded:
+                # Keeper reload: model was evicted (idle, manual, or displaced by
+                # a differing-ctx request) — warm it back at the baked default.
+                # Logged at INFO because it is a real state change and low
+                # frequency; it also makes the otherwise-silent keeper provable.
+                logger.info(f"Keeping fixed model resident: reloading {model_name} (baked num_ctx={num_ctx})")
                 await self.load_model(base_url, model_name)
 
     def _env_fixed_names(self) -> set[str]:
