@@ -192,7 +192,9 @@
                         Num Context
                         <span class="lh-ctx-lock" hidden>🔒 pinned</span>
                     </span>
-                    <input type="number" id="opt-num-ctx" value="4096" min="128" step="128" />
+                    <druid-tooltip id="opt-num-ctx-tip" class="lh-ctx-tip" placement="bottom">
+                        <input type="number" id="opt-num-ctx" value="4096" min="128" step="128" />
+                    </druid-tooltip>
                 </label>
                 <div class="lh-options-buttons">
                     <druid-icon-button id="system-prompt-btn" icon="monitor-cog" label="System prompt"></druid-icon-button>

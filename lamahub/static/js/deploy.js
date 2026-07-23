@@ -74,7 +74,7 @@ async function hfSearch(loadMore = false) {
             <td data-sort="${escapeHtml(item.id.toLowerCase())}"><a class="lh-hf-link" href="https://huggingface.co/${repoAttr}" target="_blank" rel="noopener">${escapeHtml(item.id)}</a>${gated}</td>
             <td data-sort="${escapeHtml(item.author.toLowerCase())}">${escapeHtml(item.author)}</td>
             <td>${pipeline}</td>
-            <td data-sort="${item.quant_count}"><button type="button" class="lh-quant-count-btn">${item.quant_count} ▾</button></td>
+            <td data-sort="${item.quant_count}"><druid-popover placement="left" class="lh-quant-pop" data-repo="${repoAttr}"><druid-button slot="trigger" variant="outline" class="lh-quant-trigger">${item.quant_count} ▾</druid-button><div class="lh-quant-pop-body"><div class="lh-quant-pop-empty df-muted">Loading quants…</div></div></druid-popover></td>
             <td data-sort="${escapeHtml(item.updated)}">${formatDate(item.updated)}</td>
             <td data-sort="${item.downloads}">${formatCount(item.downloads)}</td>
         </tr>
@@ -135,145 +135,38 @@ function clearHfResults() {
     hfLastQuery = "";
 }
 
-// Quant list opens in a popover anchored to the quant-count button, styled to
-// match the druid-select dropdown (dark --df-select-bg, accent border,
-// --radius). Deploy = clicking a quant row (opens the model-name confirm
-// dialog). It's a popover="manual" so we own dismissal: outside-click + Esc,
-// but NOT scroll (an earlier close-on-scroll felt abrupt). The outside-click
-// handler ignores the count button so clicking it toggles via toggleQuantRow
-// instead of being eaten as a dismiss. druids has no popover primitive (see
-// GAPS.md) — hand-rolled on the native Popover API.
-let quantPopover = null;
-let quantAnchor = null; // the count button the popover is currently anchored to
+// Quant list lives in a <druid-popover> (druids 1.0.3 — the primitive that
+// resolved the GAPS.md "anchored popover" gap). It owns top-layer placement,
+// left-of-trigger positioning with flip, light-dismiss (outside-click / Esc),
+// and same-trigger toggle, so all the hand-rolled positioning / dismissal /
+// scroll-close boilerplate is gone. The trigger is a <druid-button
+// variant="outline"> (the dropdown-trigger look, also a resolved gap). The
+// panel's content is lazy-fetched the first time it opens (popover-toggle) so a
+// search of N repos costs N zero quant calls up front. Deploy = clicking a
+// quant row.
 
 /**
- * Mark a count button active (accent-bordered "open" look) and clear any
- * previously active one. Pass null to clear.
- * @param {HTMLElement|null} anchor - The button to mark active.
+ * Lazy-fill a quant popover's body the first time it opens (cached per repo).
+ * @param {HTMLElement} popEl - The <druid-popover class="lh-quant-pop"> element.
  */
-function setActiveQuantAnchor(anchor) {
-    if (quantAnchor && quantAnchor !== anchor) quantAnchor.classList.remove("is-active");
-    quantAnchor = anchor || null;
-    if (anchor) anchor.classList.add("is-active");
-}
-
-/** Lazily create the shared quant popover element (appended to <body>). */
-function getQuantPopover() {
-    if (quantPopover) return quantPopover;
-    const pop = document.createElement("div");
-    pop.id = "hf-quant-popover";
-    pop.className = "lh-quant-popover";
-    pop.setAttribute("popover", "manual");
-    document.body.appendChild(pop);
-    quantPopover = pop;
-
-    document.addEventListener("pointerdown", (e) => {
-        if (!pop.matches(":popover-open")) return;
-        // clicks on the popover or a count button are handled elsewhere
-        if (e.target.closest("#hf-quant-popover") || e.target.closest(".lh-quant-count-btn")) return;
-        hideQuantPopover();
-    });
-    document.addEventListener("keydown", (e) => {
-        if (e.key === "Escape" && pop.matches(":popover-open")) hideQuantPopover();
-    });
-    // Scrolling *outside* the popover detaches it from its anchor button, so
-    // close it. capture:true catches scrolls on inner containers (scroll events
-    // don't bubble); an internal scroll of the popover's own list is ignored.
-    window.addEventListener(
-        "scroll",
-        (e) => {
-            if (!pop.matches(":popover-open")) return;
-            if (e.target instanceof Node && pop.contains(e.target)) return;
-            hideQuantPopover();
-        },
-        true,
-    );
-    window.addEventListener("resize", hideQuantPopover);
-    return pop;
-}
-
-/** Hide the quant popover if open and clear the active button state. */
-function hideQuantPopover() {
-    if (quantPopover && quantPopover.matches(":popover-open")) quantPopover.hidePopover();
-    setActiveQuantAnchor(null);
-}
-
-/**
- * Place the popover just to the LEFT of the anchor button (flipping to its
- * right only if there's no room). Vertically it aligns TOP borders with the
- * button; if it would overflow the viewport bottom it flips to align BOTTOM
- * borders instead (opening upward).
- * @param {HTMLElement} pop - The (already shown) popover.
- * @param {HTMLElement} anchor - The quant-count button.
- */
-function positionQuantPopover(pop, anchor) {
-    const r = anchor.getBoundingClientRect();
-    const gap = 6;
-    const margin = 8;
-    const pw = pop.offsetWidth;
-    const ph = pop.offsetHeight;
-
-    // horizontal: open to the left of the button; flip right if it won't fit
-    let left = r.left - gap - pw;
-    if (left < margin) left = r.right + gap;
-    if (left + pw > window.innerWidth - margin) left = Math.max(margin, window.innerWidth - pw - margin);
-
-    // vertical: align top borders; flip to bottom-aligned when short on space
-    let top = r.top;
-    if (top + ph > window.innerHeight - margin) top = r.bottom - ph;
-    if (top < margin) top = margin;
-
-    pop.style.left = `${left}px`;
-    pop.style.top = `${top}px`;
-}
-
-/**
- * Deploy a quant chosen from the popover: close it, then open the model-name
- * confirm dialog (deployQuant).
- */
-function selectQuant(repo, family, label) {
-    hideQuantPopover();
-    deployQuant(repo, family, label);
-}
-
-/**
- * Open the quant popover anchored to the quant-count button (lazy-fetched,
- * cached). Clicking a quant row inside it starts the deploy.
- * @param {HTMLTableRowElement} row - The repo row owning the button.
- * @param {HTMLElement} anchor - The quant-count button to anchor against.
- */
-async function toggleQuantRow(row, anchor) {
-    const repo = row.dataset.repo;
-    const pop = getQuantPopover();
-
-    // Clicking the same button while open toggles it closed.
-    if (pop.matches(":popover-open") && pop.dataset.repo === repo) {
-        hideQuantPopover();
-        return;
-    }
-
-    setActiveQuantAnchor(anchor);
-    pop.dataset.repo = repo;
-    pop.innerHTML = '<div class="lh-quant-pop-empty df-muted">Loading quants…</div>';
-    pop.showPopover();
-    positionQuantPopover(pop, anchor);
+async function fillQuantPopover(popEl) {
+    if (popEl.dataset.loaded === "1") return;
+    const repo = popEl.dataset.repo;
+    const body = popEl.querySelector(".lh-quant-pop-body");
+    if (!repo || !body) return;
 
     if (!hfQuantsCache[repo]) {
         const data = await fetchAPI(`/hf/repo/${repo}/quants`);
         hfQuantsCache[repo] = data.quants || [];
     }
-    // Bail if the user closed it or opened another repo while we fetched.
-    if (!pop.matches(":popover-open") || pop.dataset.repo !== repo) return;
+    popEl.dataset.loaded = "1";
 
     const quants = hfQuantsCache[repo];
     if (!quants.length) {
-        pop.innerHTML = '<div class="lh-quant-pop-empty df-muted">No deployable GGUF files</div>';
-        positionQuantPopover(pop, anchor);
-        return;
-    }
-
-    const repoAttr = escapeHtml(repo).replace(/"/g, "&quot;");
-    pop.innerHTML = `
+        body.innerHTML = '<div class="lh-quant-pop-empty df-muted">No deployable GGUF files</div>';
+    } else {
+        const repoAttr = escapeHtml(repo).replace(/"/g, "&quot;");
+        body.innerHTML = `
         <table class="lh-quant-poptable"><tbody>
             ${quants
                 .map((quant) => {
@@ -282,7 +175,7 @@ async function toggleQuantRow(row, anchor) {
                     const shardText = `${quant.shards.length} shard${quant.shards.length === 1 ? "" : "s"}`;
                     return `
                 <tr class="lh-quant-pop-row"
-                        onclick="selectQuant('${repoAttr}', '${famAttr}', '${labelAttr}')"
+                        onclick="selectQuant(event, '${repoAttr}', '${famAttr}', '${labelAttr}')"
                         title="Deploy ${escapeHtml(quant.label)}">
                     <td><span class="df-badge lh-quant-label">${escapeHtml(quant.label)}</span></td>
                     <td class="lh-quant-meta lh-quant-size">${formatBytes(quant.total_size)}</td>
@@ -292,8 +185,21 @@ async function toggleQuantRow(row, anchor) {
                 .join("")}
         </tbody></table>
     `;
-    // Re-anchor now that the real content set the final size.
-    positionQuantPopover(pop, anchor);
+    }
+    // The async fill changed the panel's size; nudge druid-popover to re-place
+    // it against the trigger with the final dimensions (no-op if it closed).
+    if (popEl.open && typeof popEl.position === "function") popEl.position();
+}
+
+/**
+ * Deploy a quant chosen from the popover: close the popover, then open the
+ * model-name confirm dialog (deployQuant).
+ * @param {Event} event - The row click (used to find the owning popover).
+ */
+function selectQuant(event, repo, family, label) {
+    const pop = event.target.closest("druid-popover");
+    if (pop && typeof pop.hide === "function") pop.hide();
+    deployQuant(repo, family, label);
 }
 
 let deployPollTimer = null;
@@ -557,22 +463,38 @@ async function initDeployTab() {
         clearResultsBtn.addEventListener("click", clearHfResults);
     }
 
-    // The quant-count button opens the popover, anchored to itself. Delegate
-    // from the TABLE, not the tbody (#hf-results): sortable.min.js sorts by
-    // replacing the tbody with a clone (cloneNode + replaceChild), which drops
-    // any listener bound to the tbody — so it would die after the first sort.
-    // The table element is stable across sorts.
+    // Lazy-load a repo's quants the first time its popover opens. druid-popover
+    // handles the open/close/positioning itself; we only need the content.
+    // popover-toggle bubbles, so listen on the TABLE, not the tbody
+    // (#hf-results): sortable.min.js replaces the tbody with a clone on sort,
+    // which would drop a tbody-bound listener. The table is stable across sorts.
     const resultsTable = document.getElementById("hf-results-table");
     if (resultsTable) {
-        resultsTable.addEventListener("click", (event) => {
-            const btn = event.target.closest(".lh-quant-count-btn");
-            if (!btn) return;
-            const row = btn.closest(".lh-hf-row");
-            if (row) toggleQuantRow(row, btn);
+        resultsTable.addEventListener("popover-toggle", (event) => {
+            const pop = event.target.closest("druid-popover.lh-quant-pop");
+            if (!pop) return;
+            const open = !!(event.detail && event.detail.open);
+            // accent the trigger only while its popover is open (see .lh-quant-
+            // trigger in app.css — quiet neutral border at rest, accent when open)
+            pop.querySelector('[slot="trigger"]')?.classList.toggle("is-open", open);
+            if (open) {
+                fillQuantPopover(pop);
+                // druid-popover follows its anchor on *window* scroll, but the
+                // results list scrolls in an inner container (no window scroll),
+                // so the panel would hang detached. Close on any scroll outside
+                // the panel instead. capture:true catches inner-container scrolls;
+                // an internal scroll of the panel's own list is ignored.
+                const onScroll = (e) => {
+                    if (e.target instanceof Node && pop.contains(e.target)) return;
+                    pop.hide();
+                };
+                pop._closeOnScroll = onScroll;
+                window.addEventListener("scroll", onScroll, true);
+            } else if (pop._closeOnScroll) {
+                window.removeEventListener("scroll", pop._closeOnScroll, true);
+                pop._closeOnScroll = null;
+            }
         });
-        // sorting moves the button the popover was anchored to: close it so it
-        // can't linger over a moved row (sortable.js emits sort-start)
-        resultsTable.addEventListener("sort-start", hideQuantPopover);
     }
 
     // note: loadStaged is driven by refreshAllData (after the models cache warms)

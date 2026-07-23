@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "lamahub"
-version = "1.3.1"
+version = "1.3.2"
 description = "Web UI to manage Ollama LLM server models"
 requires-python = ">=3.13"
 dynamic = ["dependencies"]

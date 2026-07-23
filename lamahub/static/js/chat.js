@@ -261,19 +261,21 @@ function syncCtxLockForModel() {
 
     const label = document.getElementById("opt-num-ctx-label");
     const lock = label?.querySelector(".lh-ctx-lock");
+    const tip = document.getElementById("opt-num-ctx-tip");
     const entry = getFixedEntry(select.value);
 
     if (entry && entry.num_ctx) {
         numCtx.value = entry.num_ctx;
         numCtx.disabled = true;
-        // The "why" lives in a native hover tooltip (druids has no tooltip
-        // component — see FRAMEWORK_GAPS.md); an inline note broke the layout.
-        numCtx.title = `Locked to the pinned context (${entry.num_ctx}). Unpin the model to change it.`;
+        // The "why" lives in a <druid-tooltip> (druids 1.0.3 — resolved the
+        // GAPS.md tooltip gap); it works over the disabled input where a native
+        // `title` is unreliable, and clearing `text` when unlocked hides it.
+        tip?.setAttribute("text", `Locked to the pinned context (${entry.num_ctx}). Unpin the model to change it.`);
         label?.classList.add("lh-ctx-locked");
         if (lock) lock.hidden = false;
     } else {
         numCtx.disabled = false;
-        numCtx.title = "";
+        tip?.removeAttribute("text");
         label?.classList.remove("lh-ctx-locked");
         if (lock) lock.hidden = true;
     }

@@ -325,50 +325,24 @@ druid-icon-button.spinning svg {
     text-decoration: underline;
 }
 
-/* expanded quant sub-table sits on the base shade inside a full-width cell */
-/* Quant-count button. At rest: a quiet neutral-bordered button — clearly
-   clickable, but not shouting. When its popover is open (.is-active): the
-   accent-bordered dropdown look (dark bg, accent border) so you can see which
-   button is currently open. Hover hints the accent border. */
-.lh-quant-count-btn {
-    padding: 4px 10px;
-    background: var(--bg-raised);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    color: var(--text);
-    font: inherit;
-    font-size: 0.85rem;
-    white-space: nowrap;
-    cursor: pointer;
+/* Quant list lives in a <druid-popover> (trigger: <druid-button
+   variant="outline">). The popover's own panel supplies the dropdown look
+   (dark bg, accent border, --radius, shadow, top-layer) and the outline button
+   supplies the trigger look — both framework-owned now, so only the inner
+   table content is styled here. */
+
+/* The outline variant is accent-bordered at rest; we want the quant trigger
+   quiet — neutral --border at rest, accent only on hover or while its popover
+   is open — so you can see which one is open. The variant's border-color reads
+   var(--df-accent), so overriding that token on the trigger retints just the
+   border (bg is untouched). .is-open is toggled from the popover-toggle handler. */
+.lh-quant-trigger {
+    --df-accent: var(--border);
 }
 
-.lh-quant-count-btn:hover {
-    background: var(--bg-hover);
-    border-color: var(--df-accent, var(--accent));
-}
-
-.lh-quant-count-btn.is-active {
-    background: var(--df-select-bg, var(--bg));
-    border-color: var(--df-accent, var(--accent));
-}
-
-/* Quant list popover, positioned in JS anchored to the quant-count button.
-   Styled to match the druid-select dropdown (dark --df-select-bg, accent
-   border, --radius). Block + width:max-content so the inner table drives the
-   width (columns fit content); top-layer via the native popover. */
-.lh-quant-popover {
-    position: fixed;
-    inset: auto; /* override the UA default (centered); JS sets left/top */
-    margin: 0;
-    width: max-content;
-    max-width: 92vw;
-    padding: 4px;
-    max-height: 300px;
-    overflow: auto;
-    background: var(--df-select-bg, var(--bg));
-    border: 1px solid var(--df-accent, var(--accent));
-    border-radius: var(--radius);
-    box-shadow: var(--shadow, 0 8px 28px rgba(0, 0, 0, 0.35));
+.lh-quant-trigger:hover,
+.lh-quant-trigger.is-open {
+    --df-accent: var(--accent);
 }
 
 /* Aligned columns: label / size / shards stack under each other. Columns size
@@ -520,9 +494,13 @@ druid-icon-button.spinning svg {
     display: inline-flex;
     align-items: center;
     gap: 6px;
+    /* keep "Num Context" + the pinned badge on one line — in a thin grid cell
+       the text items would otherwise wrap at their internal spaces */
+    white-space: nowrap;
 }
 
 .lh-ctx-lock {
+    flex-shrink: 0;
     font-size: 0.7rem;
     font-weight: 600;
     letter-spacing: 0.02em;
@@ -530,6 +508,7 @@ druid-icon-button.spinning svg {
     background: var(--accent-soft);
     padding: 1px 6px;
     border-radius: 999px;
+    white-space: nowrap;
 }
 
 /* Make the disabled input read as "locked", not broken. */
@@ -537,6 +516,14 @@ druid-icon-button.spinning svg {
     cursor: not-allowed;
     opacity: 0.7;
     border-color: var(--accent-soft);
+}
+
+/* The ctx input is wrapped in a <druid-tooltip> (the "why it's locked" bubble).
+   Keep the wrapper a full-width block so the input still fills the options-grid
+   cell — as a stretched flex-item it spans the column, and input:100% fills it.
+   The bubble itself renders in the top layer, unaffected by this. */
+.lh-ctx-tip {
+    display: block;
 }
 
 .lh-chat-body {
