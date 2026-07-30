@@ -142,7 +142,7 @@ async function loadFixedModels() {
                             label="Unpin ${entry.name}"></druid-icon-button>`
                     : "";
             return `
-                <div class="lh-fixed-item">
+                <div class="df-row lh-fixed-item">
                     <div>${renderCopyableModelName(entry.name)}${ctxLabel}${sourceLabel}</div>
                     ${unpinBtn}
                 </div>
@@ -239,12 +239,12 @@ async function loadRunningModels() {
             const params = details.parameter_size || "-";
             const quant = details.quantization_level || "-";
             return `
-        <div class="lh-running-item">
+        <div class="df-row lh-running-item">
             <div>
                 ${renderCopyableModelName(model.name)}
                 <span class="df-muted">${params} | ${quant}</span>
             </div>
-            <div class="lh-running-meta">
+            <div class="df-row lh-running-meta">
                 <span class="df-badge ok">${model.size ? formatBytes(model.size) : "Active"}</span>
                 <druid-icon-button circle small variant="soft" class="df-warn" icon="upload"
                         onclick="unloadModel('${model.name}')"
@@ -336,23 +336,13 @@ function renderCapabilities(capabilities) {
 }
 
 /**
- * filter models table rows by search string across all cols
- * @param {CustomEvent} [event] - druid-search "search" event ({value}).
+ * Render a full-width placeholder row for the models table.
+ * @param {string} message - Text to show.
+ * @param {string} [cls] - Extra class on the empty block (e.g. "df-danger").
+ * @returns {string} HTML markup.
  */
-function applyModelSearch(event) {
-    const input = document.getElementById("model-search-input");
-    const container = document.getElementById("models-list");
-    if (!container) return;
-
-    const raw = event && event.detail ? event.detail.value : input ? input.value : "";
-    const query = String(raw || "")
-        .trim()
-        .toLowerCase();
-    container.querySelectorAll("tr").forEach((row) => {
-        // skip placeholder rows (loading / empty / error)
-        if (row.querySelector("td[colspan]")) return;
-        row.hidden = Boolean(query) && !row.textContent.toLowerCase().includes(query);
-    });
+function placeholderRow(message, cls = "") {
+    return `<tr><td colspan="6"><div class="df-empty ${cls}">${message}</div></td></tr>`;
 }
 
 /**
@@ -362,7 +352,7 @@ async function loadModelsList() {
     const container = document.getElementById("models-list");
     if (!container) return;
 
-    container.innerHTML = '<tr><td colspan="6" class="df-muted lh-table-placeholder">Loading...</td></tr>';
+    container.innerHTML = placeholderRow("Loading…");
 
     if (!fixedModelsLoaded) {
         await loadFixedModels();
@@ -372,14 +362,14 @@ async function loadModelsList() {
 
     if (data.error) {
         lastModels = null;
-        container.innerHTML = `<tr><td colspan="6" class="lh-table-placeholder df-danger">Error: ${escapeHtml(data.error)}</td></tr>`;
+        container.innerHTML = placeholderRow(`Error: ${escapeHtml(data.error)}`, "df-danger");
         return;
     }
 
     lastModels = data.models || [];
 
     if (!data.models || data.models.length === 0) {
-        container.innerHTML = '<tr><td colspan="6" class="df-muted lh-table-placeholder">No models installed</td></tr>';
+        container.innerHTML = placeholderRow("No models installed");
         return;
     }
 
@@ -421,13 +411,13 @@ async function loadModelsList() {
 
             return `
         <tr>
-            <td data-sort="${model.name.toLowerCase()}">${renderCopyableModelName(model.name)}</td>
-            <td data-sort="${sizeBytes}">${sizeDisplay}</td>
-            <td data-sort="${params.toLowerCase()}">${params}</td>
-            <td data-sort="${capabilities.join(",")}">${renderCapabilities(capabilities)}</td>
-            <td data-sort="${quant.toLowerCase()}">${quant}</td>
-            <td class="no-sort">
-                <div class="lh-row-actions">
+            <td data-value="${model.name.toLowerCase()}">${renderCopyableModelName(model.name)}</td>
+            <td class="num" data-value="${sizeBytes}">${sizeDisplay}</td>
+            <td data-value="${params.toLowerCase()}">${params}</td>
+            <td data-value="${capabilities.join(",")}">${renderCapabilities(capabilities)}</td>
+            <td data-value="${quant.toLowerCase()}">${quant}</td>
+            <td>
+                <div class="df-row gap-sm lh-row-actions">
                     <druid-icon-button circle small icon="pin"
                             class="${pinClasses.join(" ")}"
                             ${fixedModel ? "active" : ""}
@@ -446,16 +436,9 @@ async function loadModelsList() {
         }),
     );
 
+    // druid-table watches the rows with a MutationObserver, so the active sort
+    // and filter reapply themselves after the rebuild
     container.innerHTML = rows.join("");
-
-    // reapply active search after rebuild
-    applyModelSearch();
-
-    // Trigger a custom event to indicate table content has been updated
-    const table = document.getElementById("models-table");
-    if (table) {
-        table.dispatchEvent(new Event("content-loaded"));
-    }
 }
 
 /**
@@ -610,23 +593,24 @@ async function updateModel(modelName) {
         return;
     }
 
-    // Find the update button for this model
+    // Find the update button for this model. `loading` spins it and drops
+    // further clicks, so no separate spinner/lock class is needed.
     const updateBtn = document.querySelector(`.update-btn[data-model="${modelName}"]`);
-    if (updateBtn) {
-        updateBtn.classList.add("spinning", "lh-locked");
-    }
+    updateBtn?.setAttribute("loading", "");
 
     // Create a temporary status area
     const safeModelName = modelName.replace(/[^a-zA-Z0-9]/g, "-");
     const statusRow = document.createElement("tr");
     statusRow.id = `update-status-${safeModelName}`;
     statusRow.innerHTML = `
-        <td colspan="6" class="lh-update-status">
-            <div class="lh-pull-row">
-                <span id="update-status-text-${safeModelName}">Updating ${escapeHtml(modelName)}...</span>
-                <span id="update-progress-percent-${safeModelName}" class="df-muted"></span>
+        <td colspan="6">
+            <div class="df-alert accent lh-progress">
+                <div class="df-row lh-progress-row">
+                    <span id="update-status-text-${safeModelName}">Updating ${escapeHtml(modelName)}...</span>
+                    <span id="update-progress-percent-${safeModelName}" class="df-muted"></span>
+                </div>
+                <druid-progress id="update-progress-bar-${safeModelName}" value="0" max="100"></druid-progress>
             </div>
-            <druid-progress id="update-progress-bar-${safeModelName}" value="0" max="100"></druid-progress>
         </td>
     `;
 
@@ -667,9 +651,7 @@ async function updateModel(modelName) {
                         if (data.error) {
                             showNotification(`Error updating ${modelName}: ${data.error}`, "danger");
                             statusRow.remove();
-                            if (updateBtn) {
-                                updateBtn.classList.remove("spinning", "lh-locked");
-                            }
+                            updateBtn?.removeAttribute("loading");
                             return;
                         }
 
@@ -700,22 +682,15 @@ async function updateModel(modelName) {
         statusRow.remove();
     }
 
-    if (updateBtn) {
-        updateBtn.classList.remove("spinning", "lh-locked");
-    }
+    updateBtn?.removeAttribute("loading");
 }
 
 /**
- * Reset the table sort order to default.
+ * Reset the table sort order to default. Clearing druid-table's `sort` drops
+ * the indicator but not the already-reordered rows, so reload to restore the
+ * server's natural order.
  */
 function resetTableSort() {
-    const table = document.getElementById("models-table");
-    if (!table) return;
-
-    // Remove all aria-sort attributes from headers
-    const headers = table.querySelectorAll("th[aria-sort]");
-    headers.forEach((th) => th.removeAttribute("aria-sort"));
-
-    // Reload the models list to restore original order
+    document.getElementById("models-table")?.removeAttribute("sort");
     loadModelsList();
 }

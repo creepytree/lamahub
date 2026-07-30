@@ -10,7 +10,7 @@
 {% block content %}
     <!-- Persistent stats rail (always visible) + tab panels -->
     <div class="lh-shell">
-        <aside class="lh-stats">
+        <aside class="df-stack gap-lg lh-stats">
             <div class="df-card">
                 <div class="df-card-header">Running Models</div>
                 <div class="df-card-body" id="running-models-list">
@@ -47,168 +47,184 @@
             </druid-tabs>
             <!-- Models tab -->
             <section class="df-tab-panel active scroll" data-tab-panel="models">
-                <div class="df-card lh-models-card">
-                <div class="df-card-header lh-models-header">
-                    Models
-                    <div class="lh-header-tools">
-                        <druid-search id="model-search-input" placeholder="Search"></druid-search>
-                        <input type="text" id="model-name-input" placeholder="Ollama pull" />
-                        <druid-button variant="soft" id="pull-model-btn">Pull</druid-button>
-                        <druid-icon-button id="reset-sort-btn" icon="arrow-up-wide-narrow" label="Reset sort order"></druid-icon-button>
+                <div class="df-card fill">
+                    <div class="df-card-header lh-wrap-header">
+                        Models
+                        <div class="df-row lh-header-tools">
+                            <druid-search id="model-search-input" placeholder="Search"></druid-search>
+                            <input type="text" id="model-name-input" placeholder="Ollama pull" />
+                            <druid-button variant="soft" id="pull-model-btn">Pull</druid-button>
+                            <druid-icon-button id="reset-sort-btn" icon="arrow-up-wide-narrow" label="Reset sort order"></druid-icon-button>
+                        </div>
                     </div>
-                </div>
-                <div id="pull-status" class="lh-pull-status" hidden>
-                    <div class="lh-pull-row">
-                        <span id="pull-status-text"></span>
-                        <span id="pull-progress-percent" class="df-muted"></span>
+                    <div id="pull-status" class="df-alert accent lh-progress" hidden>
+                        <div class="df-row lh-progress-row">
+                            <span id="pull-status-text"></span>
+                            <span id="pull-progress-percent" class="df-muted"></span>
+                        </div>
+                        <druid-progress id="pull-progress" value="0" max="100"></druid-progress>
                     </div>
-                    <druid-progress id="pull-progress" value="0" max="100"></druid-progress>
-                </div>
-                <div class="df-card-body scroll lh-table-wrap">
-                    <table class="lh-table sortable" id="models-table">
-                        <thead>
-                            <tr>
-                                <th data-sort="string">Model</th>
-                                <th data-sort="int">Size</th>
-                                <th data-sort="string">Params</th>
-                                <th data-sort="string">Capabilities</th>
-                                <th data-sort="string">Quant</th>
-                                <th class="no-sort lh-actions-col"></th>
-                            </tr>
-                        </thead>
-                        <tbody id="models-list">
-                            <tr>
-                                <td colspan="6" class="df-muted lh-table-placeholder">Loading...</td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
+                    <div class="df-card-body flush">
+                        <druid-table sortable id="models-table">
+                            <table class="df-table">
+                                <thead>
+                                    <tr>
+                                        <th>Model</th>
+                                        <th class="num" data-key="size">Size</th>
+                                        <th>Params</th>
+                                        <th>Capabilities</th>
+                                        <th>Quant</th>
+                                        <th data-sort="none" class="lh-actions-col"></th>
+                                    </tr>
+                                </thead>
+                                <tbody id="models-list">
+                                    <tr>
+                                        <td colspan="6">
+                                            <div class="df-empty">Loading…</div>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </druid-table>
+                    </div>
                 </div>
             </section>
             <!-- Deploy tab: HF GGUF browse + staged download cache -->
             <section class="df-tab-panel scroll lh-deploy-panel" data-tab-panel="deploy">
-                <div class="df-card lh-deploy-browse">
-                    <div class="df-card-header lh-models-header">
+                <div class="df-card">
+                    <div class="df-card-header lh-wrap-header">
                         HuggingFace GGUF
-                        <div class="lh-header-tools">
+                        <div class="df-row lh-header-tools">
                             <druid-search id="hf-search-input" placeholder="Search (e.g. qwen 122)"></druid-search>
                             <druid-button variant="soft" id="hf-search-btn">Search</druid-button>
                             <druid-icon-button id="hf-reset-sort-btn" icon="arrow-up-wide-narrow" label="Reset sort order"></druid-icon-button>
                             <druid-icon-button id="hf-clear-results-btn" icon="x" label="Clear results"></druid-icon-button>
                         </div>
                     </div>
-                    <div id="hf-deploy-status" class="lh-pull-status" hidden>
-                        <div class="lh-pull-row">
+                    <div id="hf-deploy-status" class="df-alert accent lh-progress" hidden>
+                        <div class="df-row lh-progress-row">
                             <span id="hf-deploy-status-text"></span>
                             <span id="hf-deploy-progress-percent" class="df-muted"></span>
                         </div>
                         <druid-progress id="hf-deploy-progress" value="0" max="100"></druid-progress>
                     </div>
-                    <div class="df-card-body scroll lh-table-wrap">
-                        <table class="lh-table sortable" id="hf-results-table">
-                            <thead>
-                                <tr>
-                                    <th data-sort="string">Model</th>
-                                    <th data-sort="string">Provider</th>
-                                    <th data-sort="string">Type</th>
-                                    <th data-sort="int">Quants</th>
-                                    <th data-sort="string">Updated</th>
-                                    <th data-sort="int">Downloads</th>
-                                </tr>
-                            </thead>
-                            <tbody id="hf-results">
-                                <tr>
-                                    <td colspan="6" class="df-muted lh-table-placeholder">Search HuggingFace for GGUF models to deploy</td>
-                                </tr>
-                            </tbody>
-                        </table>
-                        <div class="lh-load-more">
+                    <div class="df-card-body flush">
+                        <druid-table sortable id="hf-results-table">
+                            <table class="df-table">
+                                <thead>
+                                    <tr>
+                                        <th>Model</th>
+                                        <th>Provider</th>
+                                        <th>Type</th>
+                                        <th data-key="quants">Quants</th>
+                                        <th>Updated</th>
+                                        <th class="num" data-key="downloads">Downloads</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="hf-results">
+                                    <tr>
+                                        <td colspan="6">
+                                            <div class="df-empty">Search HuggingFace for GGUF models to deploy</div>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </druid-table>
+                        <div class="df-row lh-load-more">
                             <druid-button id="hf-load-more-btn" hidden>Load more</druid-button>
                         </div>
                     </div>
                 </div>
-                <div class="df-card lh-deploy-staged">
+                <div class="df-card">
                     <div class="df-card-header">
                         Staged Downloads
                         <span id="staged-usage" class="df-muted"></span>
                     </div>
-                    <div class="df-card-body lh-table-wrap">
-                        <table class="lh-table sortable" id="staged-table">
-                            <thead>
-                                <tr>
-                                    <th data-sort="string">Repo / Quant</th>
-                                    <th data-sort="int">Size</th>
-                                    <th data-sort="int">Shards</th>
-                                    <th data-sort="string">Status</th>
-                                    <th data-sort="string">Endpoints</th>
-                                    <th class="no-sort lh-actions-col"></th>
-                                </tr>
-                            </thead>
-                            <tbody id="staged-list">
-                                <tr>
-                                    <td colspan="6" class="df-muted lh-table-placeholder">Nothing staged</td>
-                                </tr>
-                            </tbody>
-                        </table>
+                    <div class="df-card-body flush">
+                        <druid-table sortable id="staged-table">
+                            <table class="df-table">
+                                <thead>
+                                    <tr>
+                                        <th>Repo / Quant</th>
+                                        <th class="num" data-key="size">Size</th>
+                                        <th class="num" data-key="shards">Shards</th>
+                                        <th>Status</th>
+                                        <th>Endpoints</th>
+                                        <th data-sort="none" class="lh-actions-col"></th>
+                                    </tr>
+                                </thead>
+                                <tbody id="staged-list">
+                                    <tr>
+                                        <td colspan="6">
+                                            <div class="df-empty">Nothing staged</div>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </druid-table>
                     </div>
                 </div>
             </section>
             <!-- Prompt tab -->
             <section class="df-tab-panel" data-tab-panel="prompt">
                 <div class="df-card fill">
-            <div class="df-card-header lh-chat-header">
+            <div class="df-card-header lh-wrap-header">
                 Chat
                 <druid-select id="chat-model-select" placeholder="Select model..." label="Chat model"></druid-select>
                 <druid-button toggle id="prompt-options-btn">Options</druid-button>
-                <druid-button id="clear-chat-btn" class="lh-push-right">Clear</druid-button>
+                <span class="df-spacer"></span>
+                <druid-button id="clear-chat-btn">Clear</druid-button>
             </div>
-            <div id="prompt-options" class="lh-options" hidden>
-                <label>
-                    Temperature
+            <div id="prompt-options" class="df-grid lh-options" hidden>
+                <label class="df-field">
+                    <span class="df-label">Temperature</span>
                     <input type="number" id="opt-temperature" value="0.7" min="0" max="2" step="0.1" />
                 </label>
-                <label>
-                    Top K
+                <label class="df-field">
+                    <span class="df-label">Top K</span>
                     <input type="number" id="opt-top-k" value="40" min="1" max="100" step="1" />
                 </label>
-                <label>
-                    Top P
+                <label class="df-field">
+                    <span class="df-label">Top P</span>
                     <input type="number" id="opt-top-p" value="0.9" min="0" max="1" step="0.05" />
                 </label>
-                <label>
-                    Repeat Penalty
+                <label class="df-field">
+                    <span class="df-label">Repeat Penalty</span>
                     <input type="number" id="opt-repeat-penalty" value="1.1" min="0" max="2" step="0.1" />
                 </label>
-                <label>
-                    Seed
+                <label class="df-field">
+                    <span class="df-label">Seed</span>
                     <input type="number" id="opt-seed" placeholder="Random" min="0" />
                 </label>
-                <label>
-                    Num Predict
+                <label class="df-field">
+                    <span class="df-label">Num Predict</span>
                     <input type="number" id="opt-num-predict" value="4096" min="-1" step="1" />
                 </label>
-                <label id="opt-num-ctx-label">
-                    <span class="lh-ctx-label">
+                <label class="df-field" id="opt-num-ctx-label">
+                    <span class="df-label lh-ctx-label">
                         Num Context
-                        <span class="lh-ctx-lock" hidden>🔒 pinned</span>
+                        <span class="df-badge accent lh-ctx-lock" hidden>pinned</span>
                     </span>
                     <druid-tooltip id="opt-num-ctx-tip" class="lh-ctx-tip" placement="bottom">
                         <input type="number" id="opt-num-ctx" value="4096" min="128" step="128" />
                     </druid-tooltip>
                 </label>
-                <div class="lh-options-buttons">
+                <div class="df-row lh-options-buttons">
                     <druid-icon-button id="system-prompt-btn" icon="monitor-cog" label="System prompt"></druid-icon-button>
                     <druid-icon-button toggle id="thinking-toggle-btn" icon="brain" label="Thinking"></druid-icon-button>
                 </div>
             </div>
-            <div class="df-card-body lh-chat-body">
+            <div class="df-card-body flush lh-chat-body">
                 <div id="chat-messages" class="lh-chat-messages">
-                    <div class="df-muted lh-chat-empty">Select a model and start chatting</div>
+                    <div class="df-empty">
+                        <p class="df-empty-title">No messages yet</p>
+                        <p>Select a model and start chatting</p>
+                    </div>
                 </div>
             </div>
             <div class="df-card-footer lh-chat-footer">
-                <div id="chat-attachments" class="lh-attachments" hidden></div>
-                <div class="lh-chat-inputrow">
+                <div id="chat-attachments" class="df-row" hidden></div>
+                <div class="df-row lh-chat-inputrow">
                     <input type="file" id="chat-image-input" accept="image/png,image/jpeg,image/webp" multiple hidden />
                     <druid-icon-button id="attach-image-btn" icon="image" label="Attach images"></druid-icon-button>
                     <druid-textarea id="chat-input" rows="1" autosize placeholder="Type your message..."></druid-textarea>
@@ -241,7 +257,6 @@
         window.LLMM_BASE_PATH = {{ base_path|tojson }};
     </script>
     <script src="{{ base_path }}/static/js/socket.io.min.js"></script>
-    <script src="{{ base_path }}/static/js/sortable.min.js"></script>
     <script src="{{ base_path }}/static/js/markdown-it.min.js"></script>
     <script src="{{ base_path }}/static/js/highlight.min.js"></script>
     <script type="module" src="{{ base_path }}/static/js/icons.js"></script>

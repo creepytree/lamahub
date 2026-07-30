@@ -53,13 +53,18 @@ element come from the installed `druids` package.
 - `lamahub/templates/main.jinja2` — the single page; extends `druids/base.jinja2` and
   fills the `styles`, `actions`, `content`, `scripts` blocks with `<druid-*>` tags
   (the `<druid-tabs>` strip lives above the panels in `content`, not in the navbar;
-  tabs: Models / Prompt / Log; the Log tab is a plain `<druid-log-view>`).
-- `lamahub/static/css/app.css` — only app-specific UI (dashboard grid, models table,
-  chat sizing, markdown rendering), all token-driven (`--accent`, `--border`, …).
+  tabs: Models / Deploy / Prompt / Log; the Log tab is a plain `<druid-log-view>`).
+  All three data tables are `<druid-table sortable>` around a `<table class="df-table">`
+  — sorting keys off a `<th data-key>` and a cell's `data-value`, `<th data-sort="none">`
+  opts a column out, and the component reapplies sort + filter after every rebuild.
+- `lamahub/static/css/app.css` — only app-specific UI (dashboard grid, quant popover,
+  chat sizing, markdown deltas), all token-driven (`--accent`, `--border`, `--bg-dim`,
+  `--radius-sm`, …). Layout uses the framework primitives (`.df-row`, `.df-grid`,
+  `.df-field`, `.df-alert`, `.df-empty`) rather than hand-rolled flexbox.
   Framework CSS is prefixed `df-`; app class names are prefixed `lh-`.
-- `lamahub/static/js/` — app logic (`app.js`, `models.js`, `chat.js`, `endpoints.js`,
-  `utils.js`, `requests.js`, `icons.js`) plus vendored `socket.io`, `markdown-it`,
-  `highlight.js`, `sortable`. Notifications go through `druids.toast()`; confirm/prompt
+- `lamahub/static/js/` — app logic (`app.js`, `models.js`, `chat.js`, `deploy.js`,
+  `endpoints.js`, `utils.js`, `requests.js`, `icons.js`) plus vendored `socket.io`,
+  `markdown-it`, `highlight.js`. Notifications go through `druids.toast()`; confirm/prompt
   use `druids.confirm()` / `druids.prompt()` (no native `alert`/`confirm`/`prompt`);
   icons are Lucide SVGs registered via `druids.registerIcons()` in `icons.js` and
   referenced as `<druid-icon name>` / `<druid-icon-button icon>`; generated markup

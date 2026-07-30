@@ -35,9 +35,12 @@ document.addEventListener("DOMContentLoaded", function () {
         pullBtn.addEventListener("click", pullModel);
     }
 
+    // the header's druid-search drives druid-table's filter (it reapplies
+    // itself on every rebuild, so nothing to re-run after a reload)
     const modelSearchInput = document.getElementById("model-search-input");
-    if (modelSearchInput) {
-        modelSearchInput.addEventListener("search", applyModelSearch);
+    const modelsTable = document.getElementById("models-table");
+    if (modelSearchInput && modelsTable) {
+        modelSearchInput.addEventListener("search", (e) => modelsTable.setFilter(e.detail.value));
     }
 
     const modelInput = document.getElementById("model-name-input");

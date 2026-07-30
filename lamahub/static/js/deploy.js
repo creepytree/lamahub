@@ -12,6 +12,16 @@ const hfQuantsCache = {};
 let stagedById = {};
 
 /**
+ * Render a full-width placeholder row for either Deploy-tab table.
+ * @param {string} message - Text to show.
+ * @param {string} [cls] - Extra class on the empty block (e.g. "df-danger").
+ * @returns {string} HTML markup.
+ */
+function deployPlaceholder(message, cls = "") {
+    return `<tr><td colspan="6"><div class="df-empty ${cls}">${message}</div></td></tr>`;
+}
+
+/**
  * Format large counts compactly (e.g. 2854700 -> "2.9M").
  * @param {number} count - Raw count.
  * @returns {string} Compact string.
@@ -51,7 +61,7 @@ async function hfSearch(loadMore = false) {
     const cursor = loadMore ? hfNextCursor : "";
     if (!loadMore) {
         hfLastQuery = query;
-        container.innerHTML = '<tr><td colspan="6" class="df-muted lh-table-placeholder">Searching...</td></tr>';
+        container.innerHTML = deployPlaceholder("Searching…");
     }
 
     const params = new URLSearchParams();
@@ -60,7 +70,7 @@ async function hfSearch(loadMore = false) {
     const data = await fetchAPI(`/hf/search?${params.toString()}`);
 
     if (data.error) {
-        container.innerHTML = `<tr><td colspan="6" class="lh-table-placeholder df-danger">Error: ${escapeHtml(data.error)}</td></tr>`;
+        container.innerHTML = deployPlaceholder(`Error: ${escapeHtml(data.error)}`, "df-danger");
         moreBtn.hidden = true;
         return;
     }
@@ -71,18 +81,18 @@ async function hfSearch(loadMore = false) {
         const gated = item.gated ? ' <span class="df-badge">gated</span>' : "";
         return `
         <tr class="lh-hf-row" data-repo="${repoAttr}">
-            <td data-sort="${escapeHtml(item.id.toLowerCase())}"><a class="lh-hf-link" href="https://huggingface.co/${repoAttr}" target="_blank" rel="noopener">${escapeHtml(item.id)}</a>${gated}</td>
-            <td data-sort="${escapeHtml(item.author.toLowerCase())}">${escapeHtml(item.author)}</td>
+            <td data-value="${escapeHtml(item.id.toLowerCase())}"><a class="lh-hf-link" href="https://huggingface.co/${repoAttr}" target="_blank" rel="noopener">${escapeHtml(item.id)}</a>${gated}</td>
+            <td data-value="${escapeHtml(item.author.toLowerCase())}">${escapeHtml(item.author)}</td>
             <td>${pipeline}</td>
-            <td data-sort="${item.quant_count}"><druid-popover placement="left" class="lh-quant-pop" data-repo="${repoAttr}"><druid-button slot="trigger" variant="outline" class="lh-quant-trigger">${item.quant_count} ▾</druid-button><div class="lh-quant-pop-body"><div class="lh-quant-pop-empty df-muted">Loading quants…</div></div></druid-popover></td>
-            <td data-sort="${escapeHtml(item.updated)}">${formatDate(item.updated)}</td>
-            <td data-sort="${item.downloads}">${formatCount(item.downloads)}</td>
+            <td data-value="${item.quant_count}"><druid-popover placement="left" class="lh-quant-pop" data-repo="${repoAttr}"><druid-button slot="trigger" variant="outline" class="lh-quant-trigger">${item.quant_count} ▾</druid-button><div class="lh-quant-pop-body"><div class="lh-quant-pop-empty df-muted">Loading quants…</div></div></druid-popover></td>
+            <td data-value="${escapeHtml(item.updated)}">${formatDate(item.updated)}</td>
+            <td class="num" data-value="${item.downloads}">${formatCount(item.downloads)}</td>
         </tr>
     `;
     });
 
     if (!rows.length && !loadMore) {
-        container.innerHTML = '<tr><td colspan="6" class="df-muted lh-table-placeholder">No GGUF models found</td></tr>';
+        container.innerHTML = deployPlaceholder("No GGUF models found");
         moreBtn.hidden = true;
         return;
     }
@@ -104,14 +114,14 @@ async function hfSearch(loadMore = false) {
 function resetHfSort() {
     const results = document.getElementById("hf-results-table");
     if (results) {
-        results.querySelectorAll("th[aria-sort]").forEach((th) => th.removeAttribute("aria-sort"));
+        results.removeAttribute("sort");
         if (results.querySelector(".lh-hf-row")) {
             hfSearch(false);
         }
     }
     const staged = document.getElementById("staged-table");
     if (staged) {
-        staged.querySelectorAll("th[aria-sort]").forEach((th) => th.removeAttribute("aria-sort"));
+        staged.removeAttribute("sort");
         loadStaged();
     }
 }
@@ -126,11 +136,10 @@ function clearHfResults() {
     const table = document.getElementById("hf-results-table");
     if (input) input.value = "";
     if (container) {
-        container.innerHTML =
-            '<tr><td colspan="6" class="df-muted lh-table-placeholder">Search HuggingFace for GGUF models to deploy</td></tr>';
+        container.innerHTML = deployPlaceholder("Search HuggingFace for GGUF models to deploy");
     }
     if (moreBtn) moreBtn.hidden = true;
-    if (table) table.querySelectorAll("th[aria-sort]").forEach((th) => th.removeAttribute("aria-sort"));
+    if (table) table.removeAttribute("sort");
     hfNextCursor = "";
     hfLastQuery = "";
 }
@@ -345,7 +354,7 @@ async function loadStaged() {
     }
 
     if (!families.length) {
-        list.innerHTML = '<tr><td colspan="6" class="df-muted lh-table-placeholder">Nothing staged</td></tr>';
+        list.innerHTML = deployPlaceholder("Nothing staged");
         return;
     }
 
@@ -378,13 +387,13 @@ async function loadStaged() {
                     : escapeHtml(status || "-");
             return `
         <tr>
-            <td data-sort="${idAttr.toLowerCase()}">${escapeHtml(family.repo)} <span class="df-badge">${escapeHtml(family.quant)}</span></td>
-            <td data-sort="${family.disk_size || 0}">${formatBytes(family.disk_size || 0)}</td>
-            <td data-sort="${shardCount}">${shardCount}</td>
+            <td data-value="${idAttr.toLowerCase()}">${escapeHtml(family.repo)} <span class="df-badge">${escapeHtml(family.quant)}</span></td>
+            <td class="num" data-value="${family.disk_size || 0}">${formatBytes(family.disk_size || 0)}</td>
+            <td class="num" data-value="${shardCount}">${shardCount}</td>
             <td><span class="df-badge${status === "deployed" ? " ok" : status === "downloading" ? " warn" : status === "removed" ? " warn" : ""}">${statusLabel}</span></td>
             <td class="df-muted">${endpoints}</td>
-            <td class="no-sort">
-                <div class="lh-row-actions">
+            <td>
+                <div class="df-row gap-sm lh-row-actions">
                     <druid-icon-button circle small class="lh-redeploy" icon="rotate-cw"
                             onclick="redeployStaged('${idAttr}')"
                             label="Redeploy ${escapeHtml(family.model_name || "")} to the current endpoint"></druid-icon-button>
@@ -464,10 +473,9 @@ async function initDeployTab() {
     }
 
     // Lazy-load a repo's quants the first time its popover opens. druid-popover
-    // handles the open/close/positioning itself; we only need the content.
-    // popover-toggle bubbles, so listen on the TABLE, not the tbody
-    // (#hf-results): sortable.min.js replaces the tbody with a clone on sort,
-    // which would drop a tbody-bound listener. The table is stable across sorts.
+    // owns open/close and follows its anchor through inner-container scrolling
+    // (capture-phase listener since 1.0.5), so we only supply the content.
+    // popover-toggle bubbles; listen on the stable table, not the tbody.
     const resultsTable = document.getElementById("hf-results-table");
     if (resultsTable) {
         resultsTable.addEventListener("popover-toggle", (event) => {
@@ -477,23 +485,7 @@ async function initDeployTab() {
             // accent the trigger only while its popover is open (see .lh-quant-
             // trigger in app.css — quiet neutral border at rest, accent when open)
             pop.querySelector('[slot="trigger"]')?.classList.toggle("is-open", open);
-            if (open) {
-                fillQuantPopover(pop);
-                // druid-popover follows its anchor on *window* scroll, but the
-                // results list scrolls in an inner container (no window scroll),
-                // so the panel would hang detached. Close on any scroll outside
-                // the panel instead. capture:true catches inner-container scrolls;
-                // an internal scroll of the panel's own list is ignored.
-                const onScroll = (e) => {
-                    if (e.target instanceof Node && pop.contains(e.target)) return;
-                    pop.hide();
-                };
-                pop._closeOnScroll = onScroll;
-                window.addEventListener("scroll", onScroll, true);
-            } else if (pop._closeOnScroll) {
-                window.removeEventListener("scroll", pop._closeOnScroll, true);
-                pop._closeOnScroll = null;
-            }
+            if (open) fillQuantPopover(pop);
         });
     }
 

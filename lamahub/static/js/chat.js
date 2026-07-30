@@ -329,8 +329,9 @@ function renderChatMessages() {
 
     if (chatMessages.length === 0) {
         container.innerHTML = `
-            <div class="df-muted lh-chat-empty">
-                Select a model and start chatting
+            <div class="df-empty">
+                <p class="df-empty-title">No messages yet</p>
+                <p>Select a model and start chatting</p>
             </div>
         `;
         return;

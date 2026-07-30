@@ -1,7 +1,8 @@
 /* lamahub app-specific UI. Everything design-system-shaped (tokens, cards,
-   buttons, tabs, dialogs, toasts, log view) comes from druids; this file only
-   covers the dashboard layout, the models table, chat sizing and markdown
-   rendering. All colors are druids design tokens. */
+   tables, buttons, tabs, dialogs, toasts, alerts, empty states, layout and form
+   primitives, element typography, log view) comes from druids; this file only
+   covers the dashboard shell, the quant popover, chat sizing and the markdown
+   deltas a chat bubble needs. All colors are druids design tokens. */
 
 /* the dashboard is a full-width app surface, not a centered reading column —
    override the framework's default max-width so it uses the whole viewport */
@@ -62,20 +63,16 @@ main {
     }
 }
 
+/* the rail is a .df-stack.gap-lg; only its own scrolling is app business */
 .lh-stats {
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
     min-height: 0;
     overflow-y: auto;
 }
 
 .lh-running-item,
 .lh-fixed-item {
-    display: flex;
+    flex-wrap: nowrap;
     justify-content: space-between;
-    align-items: center;
-    gap: 8px;
     padding: 6px 0;
     border-bottom: 1px solid var(--border);
 }
@@ -92,10 +89,13 @@ main {
 }
 
 .lh-running-meta {
-    display: flex;
-    align-items: center;
-    gap: 8px;
+    flex-wrap: nowrap;
     flex-shrink: 0;
+}
+
+/* a card header whose trailing controls may wrap to a second line */
+.lh-wrap-header {
+    flex-wrap: wrap;
 }
 
 /* copyable model names: plain text that acts as a button */
@@ -116,17 +116,9 @@ main {
     color: var(--accent);
 }
 
-/* header toolbar (search / pull input / buttons) */
-.lh-models-header {
-    flex-wrap: wrap;
-}
-
+/* header toolbar (search / pull input / buttons) pushed to the far end */
 .lh-header-tools {
-    display: flex;
-    align-items: center;
-    gap: 8px;
     margin-left: auto;
-    flex-wrap: wrap;
 }
 
 .lh-header-tools druid-search {
@@ -137,71 +129,34 @@ main {
     width: 180px;
 }
 
-/* pull progress strip under the card header */
-.lh-pull-status {
-    padding: 10px 14px;
-    border-bottom: 1px solid var(--border);
-    background: var(--accent-soft);
+/* progress strip (pull / update / deploy): a standing .df-alert whose two rows
+   stack, sitting flush against the card header instead of floating in it */
+.lh-progress {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+    margin: 0;
+    border-width: 0 0 1px 3px;
+    border-radius: 0;
 }
 
-.lh-pull-row {
-    display: flex;
+.lh-progress-row {
+    flex-wrap: nowrap;
     justify-content: space-between;
-    gap: 10px;
     font-size: 0.85rem;
-    margin-bottom: 8px;
 }
 
 /* ---------- models table ---------- */
 
-.lh-table-wrap {
-    padding: 0;
-}
-
-.lh-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 0.9rem;
-}
-
-.lh-table th,
-.lh-table td {
-    padding: 8px 12px;
-    text-align: left;
-    vertical-align: middle;
-    border-bottom: 1px solid var(--border);
-}
-
-.lh-table thead th {
-    color: var(--text-muted);
-    font-size: 0.85rem;
-    position: sticky;
-    top: 0;
-    background: var(--bg-raised);
-    z-index: 1;
-}
-
-.lh-table tbody tr:hover {
-    background: var(--bg-hover);
-}
-
-.lh-table-placeholder {
-    text-align: center;
-    padding: 18px 12px;
-}
-
-/* keep Size and Params on one line (e.g. "395.9 MB" wraps at its space when the
-   column is narrow); the Capabilities column absorbs the freed width */
-#models-table td:nth-child(2),
+/* keep Params on one line (e.g. "395.9 MB" wraps at its space when the column
+   is narrow); the Capabilities column absorbs the freed width */
 #models-table td:nth-child(3) {
     white-space: nowrap;
 }
 
 .lh-row-actions {
-    display: flex;
-    gap: 6px;
+    flex-wrap: nowrap;
     justify-content: flex-end;
-    align-items: center;
 }
 
 /* icon buttons that act destructively / warningly hover in their own color
@@ -245,55 +200,6 @@ druid-icon-button.lh-pin-active svg {
 .lh-locked {
     opacity: 0.55;
     pointer-events: none;
-}
-
-/* sortable.js column headers */
-.sortable th {
-    cursor: pointer;
-    user-select: none;
-}
-
-.sortable th:hover {
-    background: var(--bg-hover);
-}
-
-.sortable th.no-sort {
-    cursor: default;
-}
-
-.sortable th.no-sort:hover {
-    background: var(--bg-raised);
-}
-
-.sortable th[aria-sort="ascending"]::after {
-    content: " ▲";
-    font-size: 0.7em;
-}
-
-.sortable th[aria-sort="descending"]::after {
-    content: " ▼";
-    font-size: 0.7em;
-}
-
-/* update-in-progress spinner on the row's update button */
-druid-icon-button.spinning svg {
-    animation: lh-spin 0.9s linear infinite;
-}
-
-@keyframes lh-spin {
-    from {
-        transform: rotate(0deg);
-    }
-
-    to {
-        transform: rotate(360deg);
-    }
-}
-
-/* inline update progress row */
-.lh-update-status {
-    padding: 8px 12px;
-    background: var(--accent-soft);
 }
 
 /* ---------- deploy tab (HF browse + staged cache) ---------- */
@@ -370,13 +276,13 @@ druid-icon-button.spinning svg {
 /* Round only the row's outer corners so the hover reads as one clean pill
    across the whole row, not a rounded box per cell. */
 .lh-quant-pop-row td:first-child {
-    border-top-left-radius: calc(var(--radius) - 4px);
-    border-bottom-left-radius: calc(var(--radius) - 4px);
+    border-top-left-radius: var(--radius-sm);
+    border-bottom-left-radius: var(--radius-sm);
 }
 
 .lh-quant-pop-row td:last-child {
-    border-top-right-radius: calc(var(--radius) - 4px);
-    border-bottom-right-radius: calc(var(--radius) - 4px);
+    border-top-right-radius: var(--radius-sm);
+    border-bottom-right-radius: var(--radius-sm);
 }
 
 /* right-align the size column so the numbers line up */
@@ -397,7 +303,6 @@ druid-icon-button.spinning svg {
 }
 
 .lh-load-more {
-    display: flex;
     justify-content: center;
     padding: 10px;
 }
@@ -447,43 +352,20 @@ druid-icon-button.spinning svg {
 
 /* ---------- prompt tab ---------- */
 
-.lh-chat-header {
-    flex-wrap: wrap;
-}
-
-.lh-chat-header druid-select {
+#chat-model-select {
     min-width: 200px;
 }
 
-.lh-push-right {
-    margin-left: auto;
-}
-
-/* collapsible options grid */
+/* collapsible options grid — .df-grid auto-fills; only the strip's own chrome
+   and the denser column floor are app business */
 .lh-options {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-    gap: 10px;
+    grid-template-columns: repeat(auto-fill, minmax(min(150px, 100%), 1fr));
     padding: 12px 14px;
     border-bottom: 1px solid var(--border);
-    font-size: 0.85rem;
-}
-
-.lh-options label {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    color: var(--text-muted);
-}
-
-.lh-options input {
-    width: 100%;
 }
 
 .lh-options-buttons {
-    display: flex;
     align-items: flex-end;
-    gap: 8px;
 }
 
 /* Num Context lock: shown when a pinned model is selected. The field is
@@ -501,14 +383,6 @@ druid-icon-button.spinning svg {
 
 .lh-ctx-lock {
     flex-shrink: 0;
-    font-size: 0.7rem;
-    font-weight: 600;
-    letter-spacing: 0.02em;
-    color: var(--accent);
-    background: var(--accent-soft);
-    padding: 1px 6px;
-    border-radius: 999px;
-    white-space: nowrap;
 }
 
 /* Make the disabled input read as "locked", not broken. */
@@ -526,10 +400,15 @@ druid-icon-button.spinning svg {
     display: block;
 }
 
+/* the input is nested in the tooltip, not a direct .df-field child, so the
+   field's stretch doesn't reach it */
+.lh-ctx-tip input {
+    width: 100%;
+}
+
 .lh-chat-body {
     display: flex;
     flex-direction: column;
-    padding: 0;
 }
 
 .lh-chat-messages {
@@ -539,11 +418,6 @@ druid-icon-button.spinning svg {
     padding: 14px;
 }
 
-.lh-chat-empty {
-    text-align: center;
-    padding: 30px 0;
-}
-
 .lh-chat-footer {
     flex-direction: column;
     align-items: stretch;
@@ -551,9 +425,8 @@ druid-icon-button.spinning svg {
 }
 
 .lh-chat-inputrow {
-    display: flex;
+    flex-wrap: nowrap;
     align-items: flex-end;
-    gap: 8px;
 }
 
 .lh-chat-inputrow druid-textarea {
@@ -578,13 +451,7 @@ druid-icon-button.spinning svg {
     color: var(--text-muted);
 }
 
-/* pending image attachments above the chat input */
-.lh-attachments {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-}
-
+/* pending image attachments above the chat input (the row is a .df-row) */
 .lh-attachment {
     position: relative;
 }
@@ -593,7 +460,7 @@ druid-icon-button.spinning svg {
     width: 64px;
     height: 64px;
     object-fit: cover;
-    border-radius: calc(var(--radius) - 4px);
+    border-radius: var(--radius-sm);
     border: 1px solid var(--border);
 }
 
@@ -608,7 +475,7 @@ druid-icon-button.spinning svg {
     max-width: 160px;
     max-height: 160px;
     object-fit: cover;
-    border-radius: calc(var(--radius) - 4px);
+    border-radius: var(--radius-sm);
     border: 1px solid var(--border);
     margin: 0 6px 6px 0;
 }
@@ -619,77 +486,26 @@ druid-icon-button.spinning svg {
     width: min(560px, 92vw);
 }
 
-/* ---------- markdown rendering (chat bubbles) ---------- */
+/* ---------- markdown rendering (chat bubbles) ----------
+   Headings, p, lists, code and pre come from the framework's element
+   typography; only what a chat bubble needs differently lives here. */
 
-.markdown-content {
-    font-size: 0.95rem;
-    line-height: 1.45;
-}
-
-.markdown-content p {
-    margin: 0 0 0.75rem;
-}
-
-.markdown-content p:last-child {
+.markdown-content > :last-child {
     margin-bottom: 0;
-}
-
-.markdown-content pre {
-    background: rgba(0, 0, 0, 0.3);
-    border-radius: calc(var(--radius) - 4px);
-    padding: 0.75rem;
-    overflow-x: auto;
-    margin: 0.5rem 0;
-}
-
-.markdown-content code {
-    background: rgba(0, 0, 0, 0.3);
-    padding: 0.125rem 0.25rem;
-    border-radius: 0.25rem;
-    font-size: 0.875em;
-    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-}
-
-.markdown-content pre code {
-    background: transparent;
-    padding: 0;
-    border-radius: 0;
-}
-
-.markdown-content ul,
-.markdown-content ol {
-    margin: 0 0 0.75rem;
-    padding-left: 1.5rem;
-}
-
-.markdown-content li {
-    margin-bottom: 0.25rem;
-}
-
-.markdown-content blockquote {
-    border-left: 3px solid var(--border);
-    padding-left: 1rem;
-    margin: 0.5rem 0;
-    opacity: 0.8;
-}
-
-.markdown-content h1,
-.markdown-content h2,
-.markdown-content h3,
-.markdown-content h4,
-.markdown-content h5,
-.markdown-content h6 {
-    margin: 1rem 0 0.5rem;
-    font-weight: 600;
 }
 
 .markdown-content h1:first-child,
 .markdown-content h2:first-child,
 .markdown-content h3:first-child,
-.markdown-content h4:first-child,
-.markdown-content h5:first-child,
-.markdown-content h6:first-child {
+.markdown-content h4:first-child {
     margin-top: 0;
+}
+
+.markdown-content blockquote {
+    margin: 0 0 10px;
+    padding-left: 12px;
+    border-left: 3px solid var(--border-strong);
+    color: var(--text-muted);
 }
 
 .markdown-content a {
@@ -699,18 +515,20 @@ druid-icon-button.spinning svg {
 
 .markdown-content table {
     width: 100%;
-    margin: 0.5rem 0;
+    margin: 0 0 10px;
     border-collapse: collapse;
+    font-size: 0.85rem;
 }
 
 .markdown-content table th,
 .markdown-content table td {
+    padding: 6px 10px;
+    text-align: left;
     border: 1px solid var(--border);
-    padding: 0.5rem;
 }
 
 .markdown-content table th {
-    background: rgba(0, 0, 0, 0.3);
+    background: var(--bg-header);
     font-weight: 600;
 }
 
