@@ -10,31 +10,31 @@
 {% block content %}
     <!-- Persistent stats rail (always visible) + tab panels -->
     <div class="lh-shell">
-        <aside class="df-stack gap-lg lh-stats">
+        <aside class="df-stack gap-lg sticky lh-stats">
             <div class="df-card">
-                <div class="df-card-header">Running Models</div>
+                <div class="df-card-header quiet">Running Models</div>
                 <div class="df-card-body" id="running-models-list">
                     <span class="df-muted">Loading...</span>
                 </div>
             </div>
             <div class="df-card">
-                <div class="df-card-header">Total Models</div>
+                <div class="df-card-header quiet">Total Models</div>
                 <div class="df-card-body" id="total-models">
                     <span class="df-muted">Loading...</span>
                 </div>
             </div>
             <div class="df-card">
-                <div class="df-card-header">Storage Used</div>
+                <div class="df-card-header quiet">Storage Used</div>
                 <div class="df-card-body" id="total-storage">
                     <span class="df-muted">Loading...</span>
                 </div>
             </div>
             <div class="df-card" id="fixed-models-card" hidden>
-                <div class="df-card-header">Fixed Models</div>
+                <div class="df-card-header quiet">Fixed Models</div>
                 <div class="df-card-body" id="fixed-models-list"></div>
             </div>
             <div class="df-card" id="staged-card" hidden>
-                <div class="df-card-header">Staged Downloads</div>
+                <div class="df-card-header quiet">Staged Downloads</div>
                 <div class="df-card-body" id="staged-summary"></div>
             </div>
         </aside>
@@ -47,8 +47,8 @@
             </druid-tabs>
             <!-- Models tab -->
             <section class="df-tab-panel active scroll" data-tab-panel="models">
-                <div class="df-card fill">
-                    <div class="df-card-header lh-wrap-header">
+                <div class="df-card fit">
+                    <div class="df-card-header section lh-wrap-header">
                         Models
                         <div class="df-row lh-header-tools">
                             <druid-search id="model-search-input" placeholder="Search"></druid-search>
@@ -66,7 +66,7 @@
                     </div>
                     <div class="df-card-body flush">
                         <druid-table sortable id="models-table">
-                            <table class="df-table">
+                            <table class="df-table wide">
                                 <thead>
                                     <tr>
                                         <th>Model</th>
@@ -92,7 +92,7 @@
             <!-- Deploy tab: HF GGUF browse + staged download cache -->
             <section class="df-tab-panel scroll lh-deploy-panel" data-tab-panel="deploy">
                 <div class="df-card">
-                    <div class="df-card-header lh-wrap-header">
+                    <div class="df-card-header section lh-wrap-header">
                         HuggingFace GGUF
                         <div class="df-row lh-header-tools">
                             <druid-search id="hf-search-input" placeholder="Search (e.g. qwen 122)"></druid-search>
@@ -110,7 +110,7 @@
                     </div>
                     <div class="df-card-body flush">
                         <druid-table sortable id="hf-results-table">
-                            <table class="df-table">
+                            <table class="df-table wide">
                                 <thead>
                                     <tr>
                                         <th>Model</th>
@@ -136,13 +136,13 @@
                     </div>
                 </div>
                 <div class="df-card">
-                    <div class="df-card-header">
+                    <div class="df-card-header section">
                         Staged Downloads
                         <span id="staged-usage" class="df-muted"></span>
                     </div>
                     <div class="df-card-body flush">
                         <druid-table sortable id="staged-table">
-                            <table class="df-table">
+                            <table class="df-table wide">
                                 <thead>
                                     <tr>
                                         <th>Repo / Quant</th>
@@ -168,71 +168,71 @@
             <!-- Prompt tab -->
             <section class="df-tab-panel" data-tab-panel="prompt">
                 <div class="df-card fill">
-            <div class="df-card-header lh-wrap-header">
-                Chat
-                <druid-select id="chat-model-select" placeholder="Select model..." label="Chat model"></druid-select>
-                <druid-button toggle id="prompt-options-btn">Options</druid-button>
-                <span class="df-spacer"></span>
-                <druid-button id="clear-chat-btn">Clear</druid-button>
-            </div>
-            <div id="prompt-options" class="df-grid lh-options" hidden>
-                <label class="df-field">
-                    <span class="df-label">Temperature</span>
-                    <input type="number" id="opt-temperature" value="0.7" min="0" max="2" step="0.1" />
-                </label>
-                <label class="df-field">
-                    <span class="df-label">Top K</span>
-                    <input type="number" id="opt-top-k" value="40" min="1" max="100" step="1" />
-                </label>
-                <label class="df-field">
-                    <span class="df-label">Top P</span>
-                    <input type="number" id="opt-top-p" value="0.9" min="0" max="1" step="0.05" />
-                </label>
-                <label class="df-field">
-                    <span class="df-label">Repeat Penalty</span>
-                    <input type="number" id="opt-repeat-penalty" value="1.1" min="0" max="2" step="0.1" />
-                </label>
-                <label class="df-field">
-                    <span class="df-label">Seed</span>
-                    <input type="number" id="opt-seed" placeholder="Random" min="0" />
-                </label>
-                <label class="df-field">
-                    <span class="df-label">Num Predict</span>
-                    <input type="number" id="opt-num-predict" value="4096" min="-1" step="1" />
-                </label>
-                <label class="df-field" id="opt-num-ctx-label">
-                    <span class="df-label lh-ctx-label">
-                        Num Context
-                        <span class="df-badge accent lh-ctx-lock" hidden>pinned</span>
-                    </span>
-                    <druid-tooltip id="opt-num-ctx-tip" class="lh-ctx-tip" placement="bottom">
-                        <input type="number" id="opt-num-ctx" value="4096" min="128" step="128" />
-                    </druid-tooltip>
-                </label>
-                <div class="df-row lh-options-buttons">
-                    <druid-icon-button id="system-prompt-btn" icon="monitor-cog" label="System prompt"></druid-icon-button>
-                    <druid-icon-button toggle id="thinking-toggle-btn" icon="brain" label="Thinking"></druid-icon-button>
-                </div>
-            </div>
-            <div class="df-card-body flush lh-chat-body">
-                <div id="chat-messages" class="lh-chat-messages">
-                    <div class="df-empty">
-                        <p class="df-empty-title">No messages yet</p>
-                        <p>Select a model and start chatting</p>
+                    <div class="df-card-header section lh-wrap-header">
+                        Chat
+                        <druid-select id="chat-model-select" placeholder="Select model..." label="Chat model"></druid-select>
+                        <druid-button toggle id="prompt-options-btn">Options</druid-button>
+                        <span class="df-spacer"></span>
+                        <druid-button id="clear-chat-btn">Clear</druid-button>
+                    </div>
+                    <div id="prompt-options" class="df-grid lh-options" hidden>
+                        <label class="df-field">
+                            <span class="df-label">Temperature</span>
+                            <input type="number" id="opt-temperature" value="0.7" min="0" max="2" step="0.1" />
+                        </label>
+                        <label class="df-field">
+                            <span class="df-label">Top K</span>
+                            <input type="number" id="opt-top-k" value="40" min="1" max="100" step="1" />
+                        </label>
+                        <label class="df-field">
+                            <span class="df-label">Top P</span>
+                            <input type="number" id="opt-top-p" value="0.9" min="0" max="1" step="0.05" />
+                        </label>
+                        <label class="df-field">
+                            <span class="df-label">Repeat Penalty</span>
+                            <input type="number" id="opt-repeat-penalty" value="1.1" min="0" max="2" step="0.1" />
+                        </label>
+                        <label class="df-field">
+                            <span class="df-label">Seed</span>
+                            <input type="number" id="opt-seed" placeholder="Random" min="0" />
+                        </label>
+                        <label class="df-field">
+                            <span class="df-label">Num Predict</span>
+                            <input type="number" id="opt-num-predict" value="4096" min="-1" step="1" />
+                        </label>
+                        <label class="df-field" id="opt-num-ctx-label">
+                            <span class="df-label lh-ctx-label">
+                                Num Context
+                                <span class="df-badge accent lh-ctx-lock" hidden>pinned</span>
+                            </span>
+                            <druid-tooltip id="opt-num-ctx-tip" class="lh-ctx-tip" placement="bottom">
+                                <input type="number" id="opt-num-ctx" value="4096" min="128" step="128" />
+                            </druid-tooltip>
+                        </label>
+                        <div class="df-row lh-options-buttons">
+                            <druid-icon-button id="system-prompt-btn" icon="monitor-cog" label="System prompt"></druid-icon-button>
+                            <druid-icon-button toggle id="thinking-toggle-btn" icon="brain" label="Thinking"></druid-icon-button>
+                        </div>
+                    </div>
+                    <div class="df-card-body flush lh-chat-body">
+                        <div id="chat-messages" class="lh-chat-messages">
+                            <div class="df-empty">
+                                <p class="df-empty-title">No messages yet</p>
+                                <p>Select a model and start chatting</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="df-card-footer lh-chat-footer">
+                        <div id="chat-attachments" class="df-row" hidden></div>
+                        <div class="df-row lh-chat-inputrow">
+                            <input type="file" id="chat-image-input" accept="image/png,image/jpeg,image/webp" multiple hidden />
+                            <druid-icon-button id="attach-image-btn" icon="image" label="Attach images"></druid-icon-button>
+                            <druid-textarea id="chat-input" rows="1" autosize placeholder="Type your message..."></druid-textarea>
+                            <druid-button variant="primary" id="send-chat-btn">Send</druid-button>
+                        </div>
                     </div>
                 </div>
-            </div>
-            <div class="df-card-footer lh-chat-footer">
-                <div id="chat-attachments" class="df-row" hidden></div>
-                <div class="df-row lh-chat-inputrow">
-                    <input type="file" id="chat-image-input" accept="image/png,image/jpeg,image/webp" multiple hidden />
-                    <druid-icon-button id="attach-image-btn" icon="image" label="Attach images"></druid-icon-button>
-                    <druid-textarea id="chat-input" rows="1" autosize placeholder="Type your message..."></druid-textarea>
-                    <druid-button variant="primary" id="send-chat-btn">Send</druid-button>
-                </div>
-            </div>
-        </div>
-    </section>
+            </section>
             <!-- Log tab -->
             <section class="df-tab-panel" data-tab-panel="log">
                 <druid-log-view src="{{ base_path }}/api/logs" poll="5" boxed heading="Application Log"></druid-log-view>

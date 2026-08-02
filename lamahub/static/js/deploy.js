@@ -67,7 +67,11 @@ async function hfSearch(loadMore = false) {
     const params = new URLSearchParams();
     if (query) params.set("q", query);
     if (cursor) params.set("cursor", cursor);
+    // spin whichever button asked for the page; the width stays put
+    const busyBtn = loadMore ? moreBtn : document.getElementById("hf-search-btn");
+    busyBtn?.setAttribute("loading", "");
     const data = await fetchAPI(`/hf/search?${params.toString()}`);
+    busyBtn?.removeAttribute("loading");
 
     if (data.error) {
         container.innerHTML = deployPlaceholder(`Error: ${escapeHtml(data.error)}`, "df-danger");

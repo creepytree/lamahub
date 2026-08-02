@@ -456,8 +456,8 @@ async function pullModel() {
         return;
     }
 
-    btn.disabled = true;
-    btn.textContent = "Pulling...";
+    // `loading` spins the button and drops clicks without changing its width
+    btn.setAttribute("loading", "");
 
     const statusText = document.getElementById("pull-status-text");
     const progressBar = document.getElementById("pull-progress");
@@ -493,8 +493,7 @@ async function pullModel() {
                         if (data.error) {
                             showNotification(`Error: ${data.error}`, "danger");
                             statusRow.hidden = true;
-                            btn.disabled = false;
-                            btn.textContent = "Pull";
+                            btn.removeAttribute("loading");
                             return;
                         }
 
@@ -523,8 +522,7 @@ async function pullModel() {
     }
 
     statusRow.hidden = true;
-    btn.disabled = false;
-    btn.textContent = "Pull";
+    btn.removeAttribute("loading");
 }
 
 /**

@@ -10,20 +10,9 @@ main {
     max-width: none;
 }
 
-/* content-card header titles read as section titles: larger, accent-colored
-   (matches the accent table heads). Scoped to the tab panels — the rail stat
-   cards keep the framework default. Framework override — logged in GAPS.md as
-   an upstream candidate (opt-in modifier); drop this when druids ships it. */
-.lh-panels .df-card-header {
-    font-size: 1rem;
-    color: var(--accent);
-}
-
-/* rail stat-card names sit quiet in the muted grey (the accent is reserved for
-   the main content section titles), and drop the header divider so the small
-   cards read as one calm block instead of a stack of ruled boxes */
+/* drop the header divider on the rail tiles so the small cards read as one calm
+   block instead of a stack of ruled boxes (the weight itself is .quiet) */
 .lh-stats .df-card-header {
-    color: var(--text-muted);
     border-bottom: none;
 }
 
@@ -55,18 +44,6 @@ main {
     display: flex;
     flex-direction: column;
     min-height: 0;
-}
-
-@media (max-width: 900px) {
-    .lh-shell {
-        grid-template-columns: 1fr;
-    }
-}
-
-/* the rail is a .df-stack.gap-lg; only its own scrolling is app business */
-.lh-stats {
-    min-height: 0;
-    overflow-y: auto;
 }
 
 .lh-running-item,
@@ -534,4 +511,37 @@ druid-icon-button.lh-pin-active svg {
 
 .lh-actions-col {
     width: 110px;
+}
+
+/* ---------- narrow viewports ----------
+   druids' flow tier (<=900px) already releases the fixed shell: the document
+   scrolls, panels size to their content, .fill / .fit stop capping and the
+   sticky rail goes static. Only the app's own two-column grid and its header
+   toolbars are left to answer. */
+
+@media (max-width: 900px) {
+    .lh-shell {
+        grid-template-columns: 1fr;
+    }
+
+    /* nothing stretches the chat card in flow mode, so the message list needs a
+       height of its own */
+    .lh-chat-messages {
+        min-height: 55vh;
+    }
+
+    /* header toolbars wrap under the title instead of squeezing their inputs */
+    .lh-header-tools {
+        flex-wrap: wrap;
+        margin-left: 0;
+    }
+
+    .lh-header-tools druid-search,
+    .lh-header-tools input[type="text"],
+    #hf-search-input,
+    #chat-model-select {
+        flex: 1 1 140px;
+        min-width: 0;
+        width: auto;
+    }
 }

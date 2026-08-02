@@ -529,8 +529,8 @@ async function sendMessage(message, images = []) {
 
     // Prepare for assistant response
     isGenerating = true;
-    sendBtn.disabled = true;
-    sendBtn.textContent = "...";
+    // `loading` spins the button and drops clicks without changing its width
+    sendBtn.setAttribute("loading", "");
 
     // Add placeholder for assistant message
     const assistantMsg = { role: "assistant", content: "", thinking: "" };
@@ -613,8 +613,7 @@ async function sendMessage(message, images = []) {
         renderChatMessages();
     } finally {
         isGenerating = false;
-        sendBtn.disabled = false;
-        sendBtn.textContent = "Send";
+        sendBtn.removeAttribute("loading");
     }
 }
 
