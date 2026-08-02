@@ -524,10 +524,14 @@ druid-icon-button.lh-pin-active svg {
         grid-template-columns: 1fr;
     }
 
-    /* nothing stretches the chat card in flow mode, so the message list needs a
-       height of its own */
+    /* Nothing stretches the chat card in flow mode, so the message list has to
+       carry its own height — and its own ceiling. Uncapped it grows with the
+       conversation, which makes the document the scroller: the list stops being
+       scrollable (so scrollChatToBottom silently does nothing) and the composer
+       below it drifts off screen. Same cap the framework puts on druid-log-view. */
     .lh-chat-messages {
-        min-height: 55vh;
+        min-height: 40dvh;
+        max-height: 65dvh;
     }
 
     /* header toolbars wrap under the title instead of squeezing their inputs */
