@@ -82,8 +82,9 @@ element come from the installed `druids` package.
   `endpoints.js`, `utils.js`, `requests.js`, `icons.js`) plus vendored `socket.io`,
   `markdown-it`, `highlight.js`. Notifications go through `druids.toast()`; confirm/prompt
   use `druids.confirm()` / `druids.prompt()`, and multi-field asks (the pin dialog:
-  context length + model type) build a form on `druids.modal()` and resolve a promise
-  on its `close` event (no native `alert`/`confirm`/`prompt`);
+  context length + model type) use `druids.form()`, leaning on the fields' own
+  `required`/`min`/`step` (enforced at submit) rather than a hand-written
+  `validate` (no native `alert`/`confirm`/`prompt`, no hand-rolled `modal()`);
   icons are Lucide SVGs registered via `druids.registerIcons()` in `icons.js` and
   referenced as `<druid-icon name>` / `<druid-icon-button icon>`; generated markup
   uses `<druid-*>` elements and `lh-*` classes.

@@ -164,59 +164,40 @@ async function loadFixedModels() {
  * @param {string[]} capabilities - Reported capabilities, used to preselect kind.
  * @returns {Promise<{num_ctx: number|null, kind: string|null}|null>} null if cancelled.
  */
-function promptPinSettings(modelName, capabilities) {
-    // detected kind is only shown as the auto option's hint; the server detects
-    // again on every reconcile, so "auto" stays right if the model is replaced
+async function promptPinSettings(modelName, capabilities) {
+    // detected kind is only the auto option's hint; the server detects again on
+    // every reconcile, so "auto" stays right if the model is replaced
     const detected = capabilities.includes("embedding") ? "embed" : "chat";
-    const form = document.createElement("div");
-    form.className = "df-stack gap-lg";
-    form.innerHTML = `
-        <label class="df-field">
-            <span>Context length (num_ctx)</span>
-            <input type="text" id="pin-ctx" placeholder="e.g. 8192" autocomplete="off">
-            <small class="df-muted">Baked as the model's default for every client. Empty = only protect from deletion.</small>
-        </label>
-        <div class="df-field">
-            <!-- div, not label: a custom element is not labelable, so a label here would associate with nothing -->
-            <span>Model type</span>
-            <druid-select id="pin-kind" value="">
-                <option value="">Auto-detect (${detected})</option>
-                <option value="chat">Chat / Completion</option>
-                <option value="embed">Embedding</option>
-            </druid-select>
-            <small class="df-muted">Which endpoint keeps it warm. Vision, OCR, tools and thinking models all load as chat.</small>
-        </div>
-    `;
-
-    return new Promise((resolve) => {
-        let settings = null;
-        const dialog = druids.modal({
-            title: `Pin "${modelName}"`,
-            content: form,
-            actions: [
-                { label: "Cancel" },
-                {
-                    label: "Pin",
-                    variant: "primary",
-                    onClick: (d) => {
-                        const trimmed = form.querySelector("#pin-ctx").value.trim();
-                        let numCtx = null;
-                        if (trimmed) {
-                            numCtx = parseInt(trimmed, 10);
-                            if (!Number.isInteger(numCtx) || numCtx <= 0) {
-                                showNotification("Context length must be a positive number", "warning");
-                                return;
-                            }
-                        }
-                        settings = { num_ctx: numCtx, kind: form.querySelector("#pin-kind").value || null };
-                        d.close();
-                    },
-                },
-            ],
-        });
-        dialog.addEventListener("close", () => resolve(settings), { once: true });
-        form.querySelector("#pin-ctx").focus();
+    const values = await druids.form("", {
+        title: `Pin "${modelName}"`,
+        confirmLabel: "Pin",
+        fields: [
+            {
+                name: "num_ctx",
+                label: "Context length (num_ctx)",
+                type: "number",
+                // blank resolves null (pin without baking a context); anything
+                // typed has to be a whole number of tokens, which min/step enforce
+                min: 1,
+                step: 1,
+                placeholder: "e.g. 8192",
+                hint: "Baked as the model's default for every client. Empty = only protect from deletion.",
+            },
+            {
+                name: "kind",
+                label: "Model type",
+                type: "select",
+                options: [
+                    { value: "", label: `Auto-detect (${detected})` },
+                    { value: "chat", label: "Chat / Completion" },
+                    { value: "embed", label: "Embedding" },
+                ],
+                hint: "Which endpoint keeps it warm. Vision, OCR, tools and thinking models all load as chat.",
+            },
+        ],
     });
+    if (values === null) return null;
+    return { num_ctx: values.num_ctx, kind: values.kind || null };
 }
 
 /**

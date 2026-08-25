@@ -1,12 +1,12 @@
 <div align="center">
 
-# <img src="https://raw.githubusercontent.com/creepytree/druidforms/main/assets/leaf_swatch.svg" width="42" alt="" align="center"> lamahub
+# <img src="https://raw.githubusercontent.com/creepytree/druidforms/main/assets/leaf_swatch.svg" width="42" alt="" align="center"> Lamahub
 
 Mini webapp for managing Ollama LLM server models
 
 [![Docker Hub](https://img.shields.io/docker/pulls/bitdruid/lamahub?logo=docker&logoColor=white&label=docker%20pulls)](https://hub.docker.com/r/bitdruid/lamahub)
 
-<a href="example.png"><img src="example.png" width="666" alt="Example"></a>
+<a href="media/example.png"><img src="media/example.png" width="666" alt="Example"></a>
 
 </div>
 
