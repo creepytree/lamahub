@@ -9,7 +9,7 @@ from fastapi.responses import StreamingResponse
 from lamahub.env import env
 from lamahub.extensions import logger
 from lamahub.services.endpoints import Endpoint, registry
-from lamahub.services.ollama import normalize_model_name, ollama_service
+from lamahub.services.ollama import MODEL_KINDS, normalize_model_name, ollama_service
 from lamahub.services import fixed_store, hf_deploy, staging_store
 
 api = APIRouter(prefix="/api")
@@ -66,7 +66,7 @@ async def get_fixed_models(endpoint: Endpoint = Depends(resolve_endpoint)):
     """Get fixed models (env baseline + UI pins) with their pinned context length.
 
     Fixed models are managed only on the default endpoint, so other endpoints
-    report none. Each entry is {name, num_ctx, source}.
+    report none. Each entry is {name, num_ctx, kind, source}.
     """
     if not registry.is_default(endpoint.url):
         return {"models": []}
@@ -94,14 +94,20 @@ async def pin_fixed_model(
         if num_ctx <= 0:
             return {"status": "error", "message": "num_ctx must be positive"}
 
+    # kind picks the endpoint the residency keeper warm-loads through; null means
+    # detect it from the model's capabilities on every pass.
+    kind = data.get("kind") or None
+    if kind is not None and kind not in MODEL_KINDS:
+        return {"status": "error", "message": f"kind must be one of {', '.join(MODEL_KINDS)}"}
+
     normalized_name = normalize_model_name(model_name)
-    fixed_store.set_pin(normalized_name, num_ctx)
-    logger.info(f"Pinned model {normalized_name} (num_ctx={num_ctx})")
+    fixed_store.set_pin(normalized_name, num_ctx, kind)
+    logger.info(f"Pinned model {normalized_name} (num_ctx={num_ctx}, kind={kind})")
 
     # Bake the context immediately so clients get it without waiting for the
     # reconcile loop; surface any clamp to the model's native maximum.
     if num_ctx:
-        effective = await ollama_service.ensure_baked_ctx(endpoint.url, normalized_name, num_ctx)
+        effective = await ollama_service.ensure_baked_ctx(endpoint.url, normalized_name, num_ctx, kind)
         if effective is not None and effective != num_ctx:
             return {
                 "status": "success",

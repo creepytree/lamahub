@@ -40,9 +40,13 @@ main {
     gap: 16px;
 }
 
+/* min-width:0 beats the auto minimum a grid item gets from its content — without
+   it the wide models table sets the column's floor, widening the track (and the
+   rail cards sharing it) instead of scrolling inside its own container */
 .lh-panels {
     display: flex;
     flex-direction: column;
+    min-width: 0;
     min-height: 0;
 }
 
@@ -63,6 +67,20 @@ main {
 .lh-running-item:last-child,
 .lh-fixed-item:last-child {
     border-bottom: none;
+}
+
+/* rail tiles stack the name over its badges, so a long name never squeezes them */
+.lh-stack-info {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+}
+
+/* the exact VRAM/RAM split; .df-warn only remaps accent vars, so color it here */
+.lh-split {
+    color: var(--warn);
+    font-size: 0.85em;
 }
 
 .lh-running-meta {
@@ -520,8 +538,10 @@ druid-icon-button.lh-pin-active svg {
    toolbars are left to answer. */
 
 @media (max-width: 900px) {
+    /* minmax(0,…), not 1fr: a plain 1fr floors at its content's min-content
+       width, so the wide table would stretch the track and the rail with it */
     .lh-shell {
-        grid-template-columns: 1fr;
+        grid-template-columns: minmax(0, 1fr);
     }
 
     /* Nothing stretches the chat card in flow mode, so the message list has to

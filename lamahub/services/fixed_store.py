@@ -1,6 +1,9 @@
 """Persistent, UI-managed layer of pinned (fixed) models.
 
-Stores user pins in instance/fixed_models.json as {name: {"num_ctx": int|None}}.
+Stores user pins in instance/fixed_models.json as
+{name: {"num_ctx": int|None, "kind": "chat"|"embed"|None}}. kind selects the
+endpoint the residency keeper warm-loads through; None means detect it from the
+model's capabilities. Entries written before kind existed read back as None.
 Layers on top of the env FIXED_MODELS baseline: env pins are protected and
 cannot be edited here, user pins live only in this file and survive restarts.
 
@@ -43,18 +46,18 @@ def _write(path: str, data: dict[str, dict]) -> None:
 
 
 def load_pins() -> dict[str, dict]:
-    """Return the user pin map {name: {"num_ctx": int|None}}."""
+    """Return the user pin map {name: {"num_ctx": int|None, "kind": str|None}}."""
     with _lock:
         return _read(_STORE_FILE, "fixed-model store")
 
 
-def set_pin(model_name: str, num_ctx: int | None) -> None:
+def set_pin(model_name: str, num_ctx: int | None, kind: str | None = None) -> None:
     """Add or update a user pin."""
     with _lock:
         pins = _read(_STORE_FILE, "fixed-model store")
-        pins[model_name] = {"num_ctx": num_ctx}
+        pins[model_name] = {"num_ctx": num_ctx, "kind": kind}
         _write(_STORE_FILE, pins)
-    logger.info(f"Fixed-model store: pinned {model_name} (num_ctx={num_ctx})")
+    logger.info(f"Fixed-model store: pinned {model_name} (num_ctx={num_ctx}, kind={kind})")
 
 
 def remove_pin(model_name: str) -> bool:

@@ -81,7 +81,9 @@ element come from the installed `druids` package.
 - `lamahub/static/js/` — app logic (`app.js`, `models.js`, `chat.js`, `deploy.js`,
   `endpoints.js`, `utils.js`, `requests.js`, `icons.js`) plus vendored `socket.io`,
   `markdown-it`, `highlight.js`. Notifications go through `druids.toast()`; confirm/prompt
-  use `druids.confirm()` / `druids.prompt()` (no native `alert`/`confirm`/`prompt`);
+  use `druids.confirm()` / `druids.prompt()`, and multi-field asks (the pin dialog:
+  context length + model type) build a form on `druids.modal()` and resolve a promise
+  on its `close` event (no native `alert`/`confirm`/`prompt`);
   icons are Lucide SVGs registered via `druids.registerIcons()` in `icons.js` and
   referenced as `<druid-icon name>` / `<druid-icon-button icon>`; generated markup
   uses `<druid-*>` elements and `lh-*` classes.

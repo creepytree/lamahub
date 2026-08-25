@@ -18,6 +18,31 @@ def normalize_model_name(model_name: str) -> str:
     return model_name
 
 
+# How a model is warm-loaded. Ollama routes loading by capability: an embedding
+# model rejects /api/generate with 400 "does not support generate" and has to be
+# loaded through /api/embed instead.
+#
+# Only these two of Ollama's endpoints load a model, so "kind" is deliberately
+# about the ENDPOINT, not about what the model is for: vision/OCR, tool-calling
+# and thinking models are all loaded exactly like chat. Reranking has no
+# endpoint at all yet (ollama/ollama#7219 is unmerged) -- when it lands, adding
+# it is one row in each table below. What a model can actually *do* is reported
+# separately by /api/show capabilities, which the UI shows as badges.
+KIND_CHAT = "chat"
+KIND_EMBED = "embed"
+
+# kind -> (endpoint, body that loads it; "empty request" per the ollama docs)
+_LOAD_ENDPOINTS: dict[str, tuple[str, dict[str, Any]]] = {
+    KIND_CHAT: ("/api/generate", {"prompt": "", "stream": False}),
+    KIND_EMBED: ("/api/embed", {"input": ""}),
+}
+
+# /api/show capability -> kind, first match wins; anything else loads as chat
+_CAPABILITY_KINDS = (("embedding", KIND_EMBED),)
+
+MODEL_KINDS = tuple(_LOAD_ENDPOINTS)
+
+
 class OllamaService:
     """Service for interacting with the Ollama API.
 
@@ -100,6 +125,31 @@ class OllamaService:
                     return None
         return None
 
+    async def detect_model_kind(self, base_url: str, model_name: str) -> str:
+        """Infer a model's load kind from its /api/show capabilities."""
+        info = await self.show_model_info(base_url, model_name)
+        capabilities = info.get("capabilities") or []
+        for capability, kind in _CAPABILITY_KINDS:
+            if capability in capabilities:
+                return kind
+        return KIND_CHAT
+
+    async def resolve_model_kind(self, base_url: str, model_name: str, kind: str | None) -> str:
+        """Use the stored kind when set, otherwise detect it from capabilities."""
+        if kind in MODEL_KINDS:
+            return kind
+        return await self.detect_model_kind(base_url, model_name)
+
+    @staticmethod
+    def _load_request(kind: str, model_name: str, keep_alive: Any) -> tuple[str, dict[str, Any]]:
+        """Endpoint path and body that load a model of this kind at keep_alive.
+
+        Both are the documented "empty request loads the model" form; keep_alive
+        -1 pins it, 0 unloads it. Embedding models only answer on /api/embed.
+        """
+        path, body = _LOAD_ENDPOINTS.get(kind) or _LOAD_ENDPOINTS[KIND_CHAT]
+        return path, {"model": model_name, "keep_alive": keep_alive, **body}
+
     async def get_baked_ctx(self, base_url: str, model_name: str) -> int | None:
         """Return the num_ctx currently baked into the model's Modelfile, if any.
 
@@ -116,7 +166,7 @@ class OllamaService:
                     return None
         return None
 
-    async def probe_effective_ctx(self, base_url: str, model_name: str) -> int | None:
+    async def probe_effective_ctx(self, base_url: str, model_name: str, kind: str | None = None) -> int | None:
         """Load the model with no options and read back the context it loaded at.
 
         Captures the effective default (min of the server's OLLAMA_CONTEXT_LENGTH
@@ -138,11 +188,10 @@ class OllamaService:
         ensure_baked_ctx: guarded by `baseline is None`), not on every reconcile.
         """
         try:
+            kind = await self.resolve_model_kind(base_url, model_name, kind)
+            path, payload = self._load_request(kind, model_name, "30s")
             async with httpx.AsyncClient(timeout=self.timeout) as client:
-                await client.post(
-                    f"{base_url}/api/generate",
-                    json={"model": model_name, "prompt": "", "stream": False, "keep_alive": "30s"},
-                )
+                await client.post(f"{base_url}{path}", json=payload)
             running = await self.get_running_models(base_url)
             normalized = self._normalize_model_name(model_name)
             for model in running.get("models", []):
@@ -196,7 +245,9 @@ class OllamaService:
             logger.error(f"Error baking num_ctx={num_ctx} into {model_name}: {e}")
             return False
 
-    async def ensure_baked_ctx(self, base_url: str, model_name: str, num_ctx: int) -> int | None:
+    async def ensure_baked_ctx(
+        self, base_url: str, model_name: str, num_ctx: int, kind: str | None = None
+    ) -> int | None:
         """Idempotently bake a pin's context, capturing the baseline first.
 
         Clamps num_ctx to the model's native max, and only (re)bakes when the
@@ -218,7 +269,7 @@ class OllamaService:
             return target
 
         if fixed_store.get_baseline(model_name) is None:
-            default_ctx = await self.probe_effective_ctx(base_url, model_name) if current is None else None
+            default_ctx = await self.probe_effective_ctx(base_url, model_name, kind) if current is None else None
             fixed_store.set_baseline(model_name, num_ctx=current, default_ctx=default_ctx)
 
         if await self.bake_ctx(base_url, model_name, target):
@@ -287,6 +338,7 @@ class OllamaService:
         getPromptOptions in static/js/chat.js) so it never displaces this runner.
         """
         ctx_map = self.effective_fixed_ctx()
+        kind_map = self.effective_fixed_kinds()
         pinned = {self._normalize_model_name(name) for name in ctx_map}
 
         # GC: anything we previously baked but is no longer pinned reverts.
@@ -303,14 +355,15 @@ class OllamaService:
             for model in running.get("models", [])
         }
         for model_name, num_ctx in ctx_map.items():
-            await self.ensure_baked_ctx(base_url, model_name, num_ctx)
+            kind = kind_map.get(model_name)
+            await self.ensure_baked_ctx(base_url, model_name, num_ctx, kind)
             if self._normalize_model_name(model_name) not in loaded:
                 # Keeper reload: model was evicted (idle, manual, or displaced by
                 # a differing-ctx request) — warm it back at the baked default.
                 # Logged at INFO because it is a real state change and low
                 # frequency; it also makes the otherwise-silent keeper provable.
                 logger.info(f"Keeping fixed model resident: reloading {model_name} (baked num_ctx={num_ctx})")
-                await self.load_model(base_url, model_name)
+                await self.load_model(base_url, model_name, kind)
 
     def _env_fixed_names(self) -> set[str]:
         return {self._normalize_model_name(name) for name in self.fixed_models}
@@ -327,18 +380,30 @@ class OllamaService:
         """
         env_names = self._env_fixed_names()
         merged = [
-            {"name": name, "num_ctx": self.fixed_model_ctx.get(name), "source": "env"}
+            {"name": name, "num_ctx": self.fixed_model_ctx.get(name), "kind": None, "source": "env"}
             for name in self.fixed_models
         ]
         for name, meta in fixed_store.load_pins().items():
             if self._normalize_model_name(name) in env_names:
                 continue
-            merged.append({"name": name, "num_ctx": (meta or {}).get("num_ctx"), "source": "user"})
+            meta = meta or {}
+            merged.append(
+                {
+                    "name": name,
+                    "num_ctx": meta.get("num_ctx"),
+                    "kind": meta.get("kind"),
+                    "source": "user",
+                }
+            )
         return merged
 
     def effective_fixed_ctx(self) -> dict[str, int]:
         """name -> num_ctx for every pin (env or UI) that set a context length."""
         return {entry["name"]: entry["num_ctx"] for entry in self.effective_fixed_models() if entry["num_ctx"]}
+
+    def effective_fixed_kinds(self) -> dict[str, str | None]:
+        """name -> stored load kind for every pin; None means detect it."""
+        return {entry["name"]: entry.get("kind") for entry in self.effective_fixed_models()}
 
     def is_fixed_model(self, model_name: str) -> bool:
         """True if the model is pinned via env or the UI (protected from deletion)."""
@@ -415,52 +480,44 @@ class OllamaService:
             logger.error(f"Error deleting model {model_name}: {e}")
             return {"status": "error", "message": str(e)}
 
-    async def unload_model(self, base_url: str, model_name: str) -> dict[str, Any]:
+    async def unload_model(self, base_url: str, model_name: str, kind: str | None = None) -> dict[str, Any]:
         """Unload a running model from memory.
 
         Args:
             base_url: Base URL of the target Ollama endpoint.
             model_name: Name of the model to unload.
+            kind: Load kind ("chat"/"embed"); detected from capabilities if None.
 
         Returns:
             Dictionary with status and message.
         """
         try:
+            kind = await self.resolve_model_kind(base_url, model_name, kind)
+            path, payload = self._load_request(kind, model_name, 0)
             async with httpx.AsyncClient(timeout=self.timeout) as client:
-                response = await client.post(
-                    f"{base_url}/api/generate",
-                    json={
-                        "model": model_name,
-                        "stream": False,
-                        "keep_alive": 0,
-                    },
-                )
+                response = await client.post(f"{base_url}{path}", json=payload)
                 response.raise_for_status()
                 return {"status": "success", "message": f"Model {model_name} unloaded"}
         except Exception as e:
             logger.error(f"Error unloading model {model_name}: {e}")
             return {"status": "error", "message": str(e)}
 
-    async def load_model(self, base_url: str, model_name: str) -> dict[str, Any]:
-        """Load a model into memory.
+    async def load_model(self, base_url: str, model_name: str, kind: str | None = None) -> dict[str, Any]:
+        """Load a model into memory and pin it there (keep_alive -1).
 
         Args:
             base_url: Base URL of the target Ollama endpoint.
             model_name: Name of the model to load.
+            kind: Load kind ("chat"/"embed"); detected from capabilities if None.
 
         Returns:
             Dictionary with status and message.
         """
         try:
+            kind = await self.resolve_model_kind(base_url, model_name, kind)
+            path, payload = self._load_request(kind, model_name, -1)
             async with httpx.AsyncClient(timeout=self.timeout) as client:
-                response = await client.post(
-                    f"{base_url}/api/generate",
-                    json={
-                        "model": model_name,
-                        "stream": False,
-                        "keep_alive": -1,
-                    },
-                )
+                response = await client.post(f"{base_url}{path}", json=payload)
                 response.raise_for_status()
                 return {"status": "success", "message": f"Model {model_name} loaded"}
         except Exception as e:

@@ -133,6 +133,9 @@ async function loadFixedModels() {
     container.innerHTML = fixedModels
         .map((entry) => {
             const ctxLabel = entry.num_ctx ? `<span class="df-badge">${entry.num_ctx} ctx</span>` : "";
+            const kindLabel = entry.kind
+                ? `<span class="df-badge accent" title="Warm-loaded as ${entry.kind}">${escapeHtml(entry.kind)}</span>`
+                : '<span class="df-badge" title="Load endpoint detected from the model\'s capabilities">auto</span>';
             const sourceLabel =
                 entry.source === "env" ? '<span class="df-badge" title="Set via FIXED_MODELS">env</span>' : "";
             const unpinBtn =
@@ -141,9 +144,13 @@ async function loadFixedModels() {
                             onclick="unpinModel('${entry.name}')"
                             label="Unpin ${entry.name}"></druid-icon-button>`
                     : "";
+            // name on its own line so a long one does not squeeze the badges
             return `
                 <div class="df-row lh-fixed-item">
-                    <div>${renderCopyableModelName(entry.name)}${ctxLabel}${sourceLabel}</div>
+                    <div class="lh-stack-info">
+                        <div>${renderCopyableModelName(entry.name)}</div>
+                        <div class="lh-badges">${ctxLabel}${kindLabel}${sourceLabel}</div>
+                    </div>
                     ${unpinBtn}
                 </div>
             `;
@@ -152,33 +159,85 @@ async function loadFixedModels() {
 }
 
 /**
+ * Ask for a pin's context length and load kind.
+ * @param {string} modelName - Model being pinned.
+ * @param {string[]} capabilities - Reported capabilities, used to preselect kind.
+ * @returns {Promise<{num_ctx: number|null, kind: string|null}|null>} null if cancelled.
+ */
+function promptPinSettings(modelName, capabilities) {
+    // detected kind is only shown as the auto option's hint; the server detects
+    // again on every reconcile, so "auto" stays right if the model is replaced
+    const detected = capabilities.includes("embedding") ? "embed" : "chat";
+    const form = document.createElement("div");
+    form.className = "df-stack gap-lg";
+    form.innerHTML = `
+        <label class="df-field">
+            <span>Context length (num_ctx)</span>
+            <input type="text" id="pin-ctx" placeholder="e.g. 8192" autocomplete="off">
+            <small class="df-muted">Baked as the model's default for every client. Empty = only protect from deletion.</small>
+        </label>
+        <div class="df-field">
+            <!-- div, not label: a custom element is not labelable, so a label here would associate with nothing -->
+            <span>Model type</span>
+            <druid-select id="pin-kind" value="">
+                <option value="">Auto-detect (${detected})</option>
+                <option value="chat">Chat / Completion</option>
+                <option value="embed">Embedding</option>
+            </druid-select>
+            <small class="df-muted">Which endpoint keeps it warm. Vision, OCR, tools and thinking models all load as chat.</small>
+        </div>
+    `;
+
+    return new Promise((resolve) => {
+        let settings = null;
+        const dialog = druids.modal({
+            title: `Pin "${modelName}"`,
+            content: form,
+            actions: [
+                { label: "Cancel" },
+                {
+                    label: "Pin",
+                    variant: "primary",
+                    onClick: (d) => {
+                        const trimmed = form.querySelector("#pin-ctx").value.trim();
+                        let numCtx = null;
+                        if (trimmed) {
+                            numCtx = parseInt(trimmed, 10);
+                            if (!Number.isInteger(numCtx) || numCtx <= 0) {
+                                showNotification("Context length must be a positive number", "warning");
+                                return;
+                            }
+                        }
+                        settings = { num_ctx: numCtx, kind: form.querySelector("#pin-kind").value || null };
+                        d.close();
+                    },
+                },
+            ],
+        });
+        dialog.addEventListener("close", () => resolve(settings), { once: true });
+        form.querySelector("#pin-ctx").focus();
+    });
+}
+
+/**
  * Pin a model, optionally baking a fixed context length as its default.
  * @param {string} modelName - Name of the model to pin.
  */
 async function pinModel(modelName) {
-    const input = await druids.prompt(
-        "Context length (num_ctx) baked as the model's default for every client — leave empty to just protect it from deletion:",
-        { title: `Pin "${modelName}"`, placeholder: "e.g. 8192", confirmLabel: "Pin" },
-    );
-    if (input === null) return; // cancelled
-
-    const trimmed = input.trim();
-    let numCtx = null;
-    if (trimmed) {
-        numCtx = parseInt(trimmed, 10);
-        if (!Number.isInteger(numCtx) || numCtx <= 0) {
-            showNotification("Context length must be a positive number", "warning");
-            return;
-        }
-    }
+    const capabilities = await fetchModelCapabilities(modelName);
+    const settings = await promptPinSettings(modelName, capabilities);
+    if (settings === null) return; // cancelled
 
     const result = await fetchAPI(`/models/fixed/${encodeURIComponent(modelName)}`, {
         method: "PUT",
-        body: JSON.stringify({ num_ctx: numCtx }),
+        body: JSON.stringify(settings),
     });
 
     if (result.status === "success") {
-        showNotification(result.message ? `Pinned "${modelName}" — ${result.message}` : `Pinned "${modelName}"`, "success");
+        showNotification(
+            result.message ? `Pinned "${modelName}" — ${result.message}` : `Pinned "${modelName}"`,
+            "success",
+        );
         fixedModelsLoaded = false;
         await loadFixedModels();
         loadModelsList();
@@ -204,6 +263,43 @@ async function unpinModel(modelName) {
     } else {
         showNotification(`Error unpinning model: ${result.message}`, "danger");
     }
+}
+
+/**
+ * Describe where ollama put a running model, from /api/ps size vs size_vram.
+ * @param {object} model - An /api/ps entry.
+ * @returns {string} Badge markup, or "" when the server reports no sizes.
+ */
+function renderPlacement(model) {
+    const size = model.size || 0;
+    const vram = model.size_vram || 0;
+    if (!size) return '<span class="df-badge">Active</span>';
+    if (vram >= size) {
+        return `<span class="df-badge ok" title="All ${formatBytes(size)} in GPU memory">GPU</span>`;
+    }
+    // spilling to system RAM is slow and usually unintended, so it is called out
+    // rather than left to be inferred from two byte counts
+    const onCpu = size - vram;
+    if (!vram) {
+        return `<span class="df-badge danger" title="No layers offloaded to the GPU: all ${formatBytes(size)} in system RAM">CPU only</span>`;
+    }
+    const pct = Math.round((vram / size) * 100);
+    return `<span class="df-badge warn" title="${formatBytes(onCpu)} did not fit in GPU memory">${pct}% GPU</span>`;
+}
+
+/**
+ * Spell out the VRAM/RAM split for a model that did not fit on the GPU.
+ * @param {object} model - An /api/ps entry.
+ * @returns {string} Markup, or "" when the model is fully on one device.
+ */
+function renderSplit(model) {
+    const size = model.size || 0;
+    const vram = model.size_vram || 0;
+    if (!size || vram >= size) return "";
+
+    // nothing to spell out at 0% on GPU: the badge and the size say it already
+    if (!vram) return "";
+    return `<span class="lh-split">${formatBytes(vram)} GPU + ${formatBytes(size - vram)} RAM</span>`;
 }
 
 /**
@@ -238,14 +334,26 @@ async function loadRunningModels() {
             const details = model.details || {};
             const params = details.parameter_size || "-";
             const quant = details.quantization_level || "-";
+            const ctxLabel = model.context_length
+                ? `<span class="df-badge" title="Loaded context length">${model.context_length} ctx</span>`
+                : "";
+            // name on its own line, then where it actually sits, so a model that
+            // fell back to RAM is visible at a glance instead of read off a size
             return `
         <div class="df-row lh-running-item">
-            <div>
-                ${renderCopyableModelName(model.name)}
-                <span class="df-muted">${params} | ${quant}</span>
+            <div class="lh-stack-info">
+                <div>
+                    ${renderCopyableModelName(model.name)}
+                    <span class="df-muted">${params} | ${quant}</span>
+                </div>
+                <div class="lh-badges">
+                    ${renderPlacement(model)}
+                    <span class="df-badge">${model.size ? formatBytes(model.size) : ""}</span>
+                    ${ctxLabel}
+                    ${renderSplit(model)}
+                </div>
             </div>
             <div class="df-row lh-running-meta">
-                <span class="df-badge ok">${model.size ? formatBytes(model.size) : "Active"}</span>
                 <druid-icon-button circle small variant="soft" class="df-warn" icon="upload"
                         onclick="unloadModel('${model.name}')"
                         label="Unload model ${model.name}"></druid-icon-button>
