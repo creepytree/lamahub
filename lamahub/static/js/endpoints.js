@@ -11,12 +11,10 @@
  */
 function refreshAllData() {
     loadRunningModels();
-    loadTotalModels();
-    loadTotalStorage();
-    // loadStaged after loadModelsList so the Deploy tab's "deployed" badges are
-    // verified against a warm model cache (see lastModels in models.js)
+    // one /models fetch feeds the table, rail stats and chat selector; loadStaged
+    // runs after it so the Deploy tab's "deployed" badges are verified against a
+    // warm model cache (see lastModels in models.js)
     loadFixedModels().then(loadModelsList).then(loadStaged);
-    loadChatModelSelect();
 }
 
 /**
@@ -34,7 +32,7 @@ function updateEndpointUrlDisplay(url) {
     }
 
     const escaped = escapeHtml(url);
-    const attr = escaped.replace(/"/g, "&quot;");
+    const attr = escapeAttr(url);
     el.innerHTML = `
         <span class="lh-endpoint-dot" aria-hidden="true"></span>
         <button type="button"

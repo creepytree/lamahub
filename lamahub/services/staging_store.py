@@ -11,16 +11,15 @@ least-recently-used complete families; the family currently being staged or
 deployed is never evicted. See HF_DEPLOY_DESIGN.md.
 """
 
-import json
 import os
 import re
 import shutil
 import threading
-import time
 
 from lamahub.config import INSTANCE_PATH
 from lamahub.env import env
 from lamahub.extensions import logger
+from lamahub.services.jsonfile import read_json, write_json
 
 STAGING_PATH = os.path.join(INSTANCE_PATH, "hf_staging")
 _lock = threading.Lock()
@@ -51,24 +50,11 @@ def _meta_path(fam_id: str) -> str:
 
 
 def _read_meta(fam_id: str) -> dict | None:
-    try:
-        with open(_meta_path(fam_id), encoding="utf-8") as fh:
-            data = json.load(fh)
-    except FileNotFoundError:
-        return None
-    except (json.JSONDecodeError, OSError) as e:
-        logger.error(f"Error reading staging meta {fam_id}: {e}")
-        return None
-    return data if isinstance(data, dict) else None
+    return read_json(_meta_path(fam_id), f"staging meta {fam_id}")
 
 
 def _write_meta(fam_id: str, meta: dict) -> None:
-    # write-temp-then-rename so a crash mid-write can't corrupt the meta
-    os.makedirs(family_dir(fam_id), exist_ok=True)
-    tmp_file = f"{_meta_path(fam_id)}.tmp"
-    with open(tmp_file, "w", encoding="utf-8") as fh:
-        json.dump(meta, fh, indent=2)
-    os.replace(tmp_file, _meta_path(fam_id))
+    write_json(_meta_path(fam_id), meta)
 
 
 def get_meta(fam_id: str) -> dict | None:
@@ -81,15 +67,6 @@ def save_meta(fam_id: str, meta: dict) -> None:
     """Persist a family's meta."""
     with _lock:
         _write_meta(fam_id, meta)
-
-
-def touch(fam_id: str) -> None:
-    """Mark a family as recently used (LRU bookkeeping)."""
-    with _lock:
-        meta = _read_meta(fam_id)
-        if meta:
-            meta["last_used"] = time.time()
-            _write_meta(fam_id, meta)
 
 
 def disk_size(fam_id: str) -> int:

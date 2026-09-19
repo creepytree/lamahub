@@ -141,6 +141,47 @@ main {
     font-size: 0.85rem;
 }
 
+/* a long model or file name truncates with an ellipsis (full text in the
+   title) instead of pushing the right-hand figures onto a second line */
+.lh-progress-row > :first-child,
+.lh-progress-detail {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.lh-progress-row > :last-child {
+    flex-shrink: 0;
+}
+
+.lh-progress-detail {
+    font-size: 0.8rem;
+}
+
+/* waiting deploys under the progress bar */
+.lh-queue {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding-top: 6px;
+    border-top: 1px solid var(--border);
+    font-size: 0.85rem;
+}
+
+.lh-queue-row {
+    flex-wrap: nowrap;
+    gap: 8px;
+}
+
+.lh-queue-repo {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
 /* ---------- models table ---------- */
 
 /* keep Params on one line (e.g. "395.9 MB" wraps at its space when the column

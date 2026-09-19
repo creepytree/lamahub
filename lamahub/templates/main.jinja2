@@ -1,6 +1,6 @@
 {% extends "druids/base.jinja2" %}
 {% block styles %}
-    <link rel="stylesheet" href="{{ base_path }}/static/css/app.css" />
+    <link rel="stylesheet" href="{{ base_path }}/static/css/app.css?v={{ asset_v }}" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" />
 {% endblock styles %}
 {% block actions %}
@@ -103,10 +103,16 @@
                     </div>
                     <div id="hf-deploy-status" class="df-alert accent lh-progress" hidden>
                         <div class="df-row lh-progress-row">
-                            <span id="hf-deploy-status-text"></span>
-                            <span id="hf-deploy-progress-percent" class="df-muted"></span>
+                            <strong id="hf-deploy-model"></strong>
+                            <span id="hf-deploy-stage" class="df-badge accent"></span>
                         </div>
+                        <div id="hf-deploy-status-text" class="df-muted lh-progress-detail"></div>
                         <druid-progress id="hf-deploy-progress" value="0" max="100"></druid-progress>
+                        <div class="df-row lh-progress-row df-muted">
+                            <span id="hf-deploy-progress-percent"></span>
+                            <span id="hf-deploy-rate"></span>
+                        </div>
+                        <div id="hf-deploy-queue" class="lh-queue" hidden></div>
                     </div>
                     <div class="df-card-body flush">
                         <druid-table sortable id="hf-results-table">
@@ -256,17 +262,17 @@
     <script>
         window.LLMM_BASE_PATH = {{ base_path|tojson }};
     </script>
-    <script src="{{ base_path }}/static/js/socket.io.min.js"></script>
-    <script src="{{ base_path }}/static/js/markdown-it.min.js"></script>
-    <script src="{{ base_path }}/static/js/highlight.min.js"></script>
-    <script type="module" src="{{ base_path }}/static/js/icons.js"></script>
-    <script src="{{ base_path }}/static/js/utils.js"></script>
-    <script src="{{ base_path }}/static/js/requests.js"></script>
-    <script src="{{ base_path }}/static/js/models.js"></script>
-    <script src="{{ base_path }}/static/js/deploy.js"></script>
-    <script src="{{ base_path }}/static/js/chat.js"></script>
-    <script src="{{ base_path }}/static/js/endpoints.js"></script>
-    <script src="{{ base_path }}/static/js/app.js" defer></script>
+    <script src="{{ base_path }}/static/js/socket.io.min.js?v={{ asset_v }}"></script>
+    <script src="{{ base_path }}/static/js/markdown-it.min.js?v={{ asset_v }}"></script>
+    <script src="{{ base_path }}/static/js/highlight.min.js?v={{ asset_v }}"></script>
+    <script type="module" src="{{ base_path }}/static/js/icons.js?v={{ asset_v }}"></script>
+    <script src="{{ base_path }}/static/js/utils.js?v={{ asset_v }}"></script>
+    <script src="{{ base_path }}/static/js/requests.js?v={{ asset_v }}"></script>
+    <script src="{{ base_path }}/static/js/models.js?v={{ asset_v }}"></script>
+    <script src="{{ base_path }}/static/js/deploy.js?v={{ asset_v }}"></script>
+    <script src="{{ base_path }}/static/js/chat.js?v={{ asset_v }}"></script>
+    <script src="{{ base_path }}/static/js/endpoints.js?v={{ asset_v }}"></script>
+    <script src="{{ base_path }}/static/js/app.js?v={{ asset_v }}" defer></script>
     <script>
         // Initialize socket.io
         var socket = io({

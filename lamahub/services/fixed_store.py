@@ -12,12 +12,12 @@ pin's baked num_ctx can be reverted offline (no registry pull) when unpinned.
 See ctx_pin logic in OllamaService.
 """
 
-import json
 import os
 import threading
 
 from lamahub.config import INSTANCE_PATH
 from lamahub.extensions import logger
+from lamahub.services.jsonfile import read_json, write_json
 
 _STORE_FILE = os.path.join(INSTANCE_PATH, "fixed_models.json")
 _BASELINE_FILE = os.path.join(INSTANCE_PATH, "ctx_baseline.json")
@@ -25,24 +25,7 @@ _lock = threading.Lock()
 
 
 def _read(path: str, label: str) -> dict[str, dict]:
-    try:
-        with open(path, encoding="utf-8") as fh:
-            data = json.load(fh)
-    except FileNotFoundError:
-        return {}
-    except (json.JSONDecodeError, OSError) as e:
-        logger.error(f"Error reading {label}: {e}")
-        return {}
-    return data if isinstance(data, dict) else {}
-
-
-def _write(path: str, data: dict[str, dict]) -> None:
-    # write-temp-then-rename so a crash mid-write can't corrupt the store
-    os.makedirs(INSTANCE_PATH, exist_ok=True)
-    tmp_file = f"{path}.tmp"
-    with open(tmp_file, "w", encoding="utf-8") as fh:
-        json.dump(data, fh, indent=2)
-    os.replace(tmp_file, path)
+    return read_json(path, label) or {}
 
 
 def load_pins() -> dict[str, dict]:
@@ -56,7 +39,7 @@ def set_pin(model_name: str, num_ctx: int | None, kind: str | None = None) -> No
     with _lock:
         pins = _read(_STORE_FILE, "fixed-model store")
         pins[model_name] = {"num_ctx": num_ctx, "kind": kind}
-        _write(_STORE_FILE, pins)
+        write_json(_STORE_FILE, pins)
     logger.info(f"Fixed-model store: pinned {model_name} (num_ctx={num_ctx}, kind={kind})")
 
 
@@ -67,7 +50,7 @@ def remove_pin(model_name: str) -> bool:
         if model_name not in pins:
             return False
         del pins[model_name]
-        _write(_STORE_FILE, pins)
+        write_json(_STORE_FILE, pins)
     logger.info(f"Fixed-model store: unpinned {model_name}")
     return True
 
@@ -93,7 +76,7 @@ def set_baseline(model_name: str, num_ctx: int | None, default_ctx: int | None) 
     with _lock:
         baselines = _read(_BASELINE_FILE, "ctx baseline store")
         baselines[model_name] = {"num_ctx": num_ctx, "default_ctx": default_ctx}
-        _write(_BASELINE_FILE, baselines)
+        write_json(_BASELINE_FILE, baselines)
     logger.info(f"Captured ctx baseline for {model_name}: num_ctx={num_ctx}, default_ctx={default_ctx}")
 
 
@@ -103,7 +86,7 @@ def remove_baseline(model_name: str) -> None:
         baselines = _read(_BASELINE_FILE, "ctx baseline store")
         if model_name in baselines:
             del baselines[model_name]
-            _write(_BASELINE_FILE, baselines)
+            write_json(_BASELINE_FILE, baselines)
 
 
 def baseline_names() -> list[str]:

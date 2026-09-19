@@ -24,10 +24,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
     // Set up refresh intervals
     setInterval(() => loadRunningModels(), 5000);
-    setInterval(() => {
-        loadTotalModels();
-        loadTotalStorage();
-    }, 30000); // 30 seconds - reduced from 10s to minimize log noise
+    setInterval(fetchModels, 30000); // rail stats; 30s keeps log noise down
 
     // Set up model pull functionality
     const pullBtn = document.getElementById("pull-model-btn");
@@ -102,12 +99,6 @@ if (typeof socket !== "undefined") {
 
     socket.on("model_update", function (data) {
         console.log("Model update received:", data);
-        // loadStaged after the models refresh so the Deploy tab's "deployed"
-        // badges reflect a model that was just added or deleted
-        loadFixedModels().then(loadModelsList).then(loadStaged);
-        loadRunningModels();
-        loadTotalModels();
-        loadTotalStorage();
-        loadChatModelSelect();
+        refreshAllData();
     });
 }

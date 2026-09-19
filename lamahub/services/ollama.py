@@ -1,6 +1,7 @@
 """Ollama API service for model management."""
 
 import asyncio
+import json
 from typing import Any
 
 import httpx
@@ -59,6 +60,31 @@ class OllamaService:
         self.fixed_models = env.fixed_models
         self.fixed_model_ctx = env.fixed_model_ctx
 
+    async def _request(
+        self, method: str, base_url: str, path: str, payload: dict | None = None, check: bool = True
+    ) -> httpx.Response:
+        """One non-streaming call to the endpoint; raises on HTTP errors when check."""
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            response = await client.request(method, f"{base_url}{path}", json=payload)
+            if check:
+                response.raise_for_status()
+            return response
+
+    @staticmethod
+    async def _stream_lines(base_url: str, path: str, payload: dict[str, Any]):
+        """POST and yield the endpoint's non-empty NDJSON lines as they arrive."""
+        async with httpx.AsyncClient(timeout=None) as client:
+            async with client.stream("POST", f"{base_url}{path}", json=payload) as response:
+                response.raise_for_status()
+                async for line in response.aiter_lines():
+                    if line:
+                        yield line
+
+    @staticmethod
+    def _ps_name(model: dict[str, Any]) -> str:
+        """Normalized name of an /api/ps entry."""
+        return normalize_model_name(model.get("name") or model.get("model", ""))
+
     async def list_models(self, base_url: str) -> dict[str, Any]:
         """List all available models.
 
@@ -69,10 +95,7 @@ class OllamaService:
             Dictionary containing models list or error.
         """
         try:
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
-                response = await client.get(f"{base_url}/api/tags")
-                response.raise_for_status()
-                return response.json()
+            return (await self._request("GET", base_url, "/api/tags")).json()
         except Exception as e:
             logger.error(f"Error listing models: {e}")
             return {"models": [], "error": str(e)}
@@ -92,13 +115,13 @@ class OllamaService:
             return
 
         installed_models = {
-            self._normalize_model_name(model.get("name", ""))
+            normalize_model_name(model.get("name", ""))
             for model in installed_response.get("models", [])
             if model.get("name")
         }
 
         for model_name in self.fixed_models:
-            normalized_model_name = self._normalize_model_name(model_name)
+            normalized_model_name = normalize_model_name(model_name)
             if normalized_model_name in installed_models:
                 logger.debug(f"Fixed model already installed: {model_name}")
                 continue
@@ -190,12 +213,11 @@ class OllamaService:
         try:
             kind = await self.resolve_model_kind(base_url, model_name, kind)
             path, payload = self._load_request(kind, model_name, "30s")
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
-                await client.post(f"{base_url}{path}", json=payload)
+            await self._request("POST", base_url, path, payload, check=False)
             running = await self.get_running_models(base_url)
-            normalized = self._normalize_model_name(model_name)
+            normalized = normalize_model_name(model_name)
             for model in running.get("models", []):
-                if self._normalize_model_name(model.get("name") or model.get("model", "")) == normalized:
+                if self._ps_name(model) == normalized:
                     return model.get("context_length")
         except Exception as e:
             logger.error(f"Error probing effective context for {model_name}: {e}")
@@ -229,17 +251,12 @@ class OllamaService:
         data-plane).
         """
         try:
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
-                response = await client.post(
-                    f"{base_url}/api/create",
-                    json={
-                        "model": model_name,
-                        "from": model_name,
-                        "parameters": {"num_ctx": num_ctx},
-                        "stream": False,
-                    },
-                )
-                response.raise_for_status()
+            await self._request(
+                "POST",
+                base_url,
+                "/api/create",
+                {"model": model_name, "from": model_name, "parameters": {"num_ctx": num_ctx}, "stream": False},
+            )
             return True
         except Exception as e:
             logger.error(f"Error baking num_ctx={num_ctx} into {model_name}: {e}")
@@ -260,9 +277,7 @@ class OllamaService:
         max_ctx = await self.get_model_max_ctx(base_url, model_name)
         target = min(num_ctx, max_ctx) if max_ctx else num_ctx
         if max_ctx and num_ctx > max_ctx:
-            logger.warning(
-                f"Pin num_ctx={num_ctx} exceeds {model_name} max {max_ctx}; using {max_ctx}"
-            )
+            logger.warning(f"Pin num_ctx={num_ctx} exceeds {model_name} max {max_ctx}; using {max_ctx}")
 
         current = await self.get_baked_ctx(base_url, model_name)
         if current == target:
@@ -339,25 +354,22 @@ class OllamaService:
         """
         ctx_map = self.effective_fixed_ctx()
         kind_map = self.effective_fixed_kinds()
-        pinned = {self._normalize_model_name(name) for name in ctx_map}
+        pinned = {normalize_model_name(name) for name in ctx_map}
 
         # GC: anything we previously baked but is no longer pinned reverts.
         for name in fixed_store.baseline_names():
-            if self._normalize_model_name(name) not in pinned:
+            if normalize_model_name(name) not in pinned:
                 await self.restore_ctx(base_url, name)
 
         if not ctx_map:
             return
 
         running = await self.get_running_models(base_url)
-        loaded = {
-            self._normalize_model_name(model.get("name") or model.get("model", ""))
-            for model in running.get("models", [])
-        }
+        loaded = {self._ps_name(model) for model in running.get("models", [])}
         for model_name, num_ctx in ctx_map.items():
             kind = kind_map.get(model_name)
             await self.ensure_baked_ctx(base_url, model_name, num_ctx, kind)
-            if self._normalize_model_name(model_name) not in loaded:
+            if normalize_model_name(model_name) not in loaded:
                 # Keeper reload: model was evicted (idle, manual, or displaced by
                 # a differing-ctx request) — warm it back at the baked default.
                 # Logged at INFO because it is a real state change and low
@@ -366,11 +378,11 @@ class OllamaService:
                 await self.load_model(base_url, model_name, kind)
 
     def _env_fixed_names(self) -> set[str]:
-        return {self._normalize_model_name(name) for name in self.fixed_models}
+        return {normalize_model_name(name) for name in self.fixed_models}
 
     def is_env_fixed_model(self, model_name: str) -> bool:
         """True if the model is pinned via FIXED_MODELS (protected, UI-read-only)."""
-        return self._normalize_model_name(model_name) in self._env_fixed_names()
+        return normalize_model_name(model_name) in self._env_fixed_names()
 
     def effective_fixed_models(self) -> list[dict[str, Any]]:
         """Merge the env baseline and the UI pins into one list.
@@ -384,7 +396,7 @@ class OllamaService:
             for name in self.fixed_models
         ]
         for name, meta in fixed_store.load_pins().items():
-            if self._normalize_model_name(name) in env_names:
+            if normalize_model_name(name) in env_names:
                 continue
             meta = meta or {}
             merged.append(
@@ -407,12 +419,8 @@ class OllamaService:
 
     def is_fixed_model(self, model_name: str) -> bool:
         """True if the model is pinned via env or the UI (protected from deletion)."""
-        normalized_name = self._normalize_model_name(model_name)
-        return any(self._normalize_model_name(entry["name"]) == normalized_name for entry in self.effective_fixed_models())
-
-    @staticmethod
-    def _normalize_model_name(model_name: str) -> str:
-        return normalize_model_name(model_name)
+        normalized_name = normalize_model_name(model_name)
+        return any(normalize_model_name(entry["name"]) == normalized_name for entry in self.effective_fixed_models())
 
     async def get_running_models(self, base_url: str) -> dict[str, Any]:
         """Get currently running models.
@@ -424,10 +432,7 @@ class OllamaService:
             Dictionary containing running models or error.
         """
         try:
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
-                response = await client.get(f"{base_url}/api/ps")
-                response.raise_for_status()
-                return response.json()
+            return (await self._request("GET", base_url, "/api/ps")).json()
         except Exception as e:
             logger.error(f"Error getting running models: {e}")
             return {"models": [], "error": str(e)}
@@ -443,19 +448,11 @@ class OllamaService:
             JSON strings with progress updates.
         """
         try:
-            async with httpx.AsyncClient(timeout=None) as client:
-                async with client.stream(
-                    "POST",
-                    f"{base_url}/api/pull",
-                    json={"name": model_name},
-                ) as response:
-                    response.raise_for_status()
-                    async for line in response.aiter_lines():
-                        if line:
-                            yield line
+            async for line in self._stream_lines(base_url, "/api/pull", {"name": model_name}):
+                yield line
         except Exception as e:
             logger.error(f"Error pulling model {model_name}: {e}")
-            yield f'{{"status": "error", "error": "{str(e)}"}}'
+            yield json.dumps({"status": "error", "error": str(e)})
 
     async def delete_model(self, base_url: str, model_name: str) -> dict[str, Any]:
         """Delete a model.
@@ -468,20 +465,14 @@ class OllamaService:
             Dictionary with status and message.
         """
         try:
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
-                response = await client.request(
-                    "DELETE",
-                    f"{base_url}/api/delete",
-                    json={"name": model_name},
-                )
-                response.raise_for_status()
-                return {"status": "success", "message": f"Model {model_name} deleted"}
+            await self._request("DELETE", base_url, "/api/delete", {"name": model_name})
+            return {"status": "success", "message": f"Model {model_name} deleted"}
         except Exception as e:
             logger.error(f"Error deleting model {model_name}: {e}")
             return {"status": "error", "message": str(e)}
 
     async def unload_model(self, base_url: str, model_name: str, kind: str | None = None) -> dict[str, Any]:
-        """Unload a running model from memory.
+        """Unload a running model from memory (keep_alive 0).
 
         Args:
             base_url: Base URL of the target Ollama endpoint.
@@ -491,16 +482,7 @@ class OllamaService:
         Returns:
             Dictionary with status and message.
         """
-        try:
-            kind = await self.resolve_model_kind(base_url, model_name, kind)
-            path, payload = self._load_request(kind, model_name, 0)
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
-                response = await client.post(f"{base_url}{path}", json=payload)
-                response.raise_for_status()
-                return {"status": "success", "message": f"Model {model_name} unloaded"}
-        except Exception as e:
-            logger.error(f"Error unloading model {model_name}: {e}")
-            return {"status": "error", "message": str(e)}
+        return await self._set_keep_alive(base_url, model_name, kind, 0, "unload")
 
     async def load_model(self, base_url: str, model_name: str, kind: str | None = None) -> dict[str, Any]:
         """Load a model into memory and pin it there (keep_alive -1).
@@ -513,15 +495,19 @@ class OllamaService:
         Returns:
             Dictionary with status and message.
         """
+        return await self._set_keep_alive(base_url, model_name, kind, -1, "load")
+
+    async def _set_keep_alive(
+        self, base_url: str, model_name: str, kind: str | None, keep_alive: int, verb: str
+    ) -> dict[str, Any]:
+        """Send the kind's empty load request at keep_alive (shared by load/unload)."""
         try:
             kind = await self.resolve_model_kind(base_url, model_name, kind)
-            path, payload = self._load_request(kind, model_name, -1)
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
-                response = await client.post(f"{base_url}{path}", json=payload)
-                response.raise_for_status()
-                return {"status": "success", "message": f"Model {model_name} loaded"}
+            path, payload = self._load_request(kind, model_name, keep_alive)
+            await self._request("POST", base_url, path, payload)
+            return {"status": "success", "message": f"Model {model_name} {verb}ed"}
         except Exception as e:
-            logger.error(f"Error loading model {model_name}: {e}")
+            logger.error(f"Error {verb}ing model {model_name}: {e}")
             return {"status": "error", "message": str(e)}
 
     async def show_model_info(self, base_url: str, model_name: str) -> dict[str, Any]:
@@ -535,13 +521,7 @@ class OllamaService:
             Dictionary with model details or error.
         """
         try:
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
-                response = await client.post(
-                    f"{base_url}/api/show",
-                    json={"name": model_name},
-                )
-                response.raise_for_status()
-                return response.json()
+            return (await self._request("POST", base_url, "/api/show", {"name": model_name})).json()
         except Exception as e:
             logger.error(f"Error getting model info for {model_name}: {e}")
             return {"error": str(e)}
@@ -580,19 +560,11 @@ class OllamaService:
                 payload["tools"] = tools
             if options:
                 payload["options"] = options
-            async with httpx.AsyncClient(timeout=None) as client:
-                async with client.stream(
-                    "POST",
-                    f"{base_url}/api/chat",
-                    json=payload,
-                ) as response:
-                    response.raise_for_status()
-                    async for line in response.aiter_lines():
-                        if line:
-                            yield line
+            async for line in self._stream_lines(base_url, "/api/chat", payload):
+                yield line
         except Exception as e:
             logger.error(f"Error chatting with model {model_name}: {e}")
-            yield f'{{"error": "{str(e)}"}}'
+            yield json.dumps({"error": str(e)})
 
     async def generate_stream(
         self,
@@ -620,19 +592,11 @@ class OllamaService:
             }
             if options:
                 payload["options"] = options
-            async with httpx.AsyncClient(timeout=None) as client:
-                async with client.stream(
-                    "POST",
-                    f"{base_url}/api/generate",
-                    json=payload,
-                ) as response:
-                    response.raise_for_status()
-                    async for line in response.aiter_lines():
-                        if line:
-                            yield line
+            async for line in self._stream_lines(base_url, "/api/generate", payload):
+                yield line
         except Exception as e:
             logger.error(f"Error generating with model {model_name}: {e}")
-            yield f'{{"error": "{str(e)}"}}'
+            yield json.dumps({"error": str(e)})
 
 
 ollama_service = OllamaService()

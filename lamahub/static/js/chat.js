@@ -184,14 +184,6 @@ function renderAttachmentPreviews() {
 }
 
 /**
- * Get the current prompt mode (always chat now).
- * @returns {string} 'chat'
- */
-function getPromptMode() {
-    return "chat";
-}
-
-/**
  * Get prompt options from the UI.
  * @param {string} [model] - The selected model name. When it is a pinned
  *   (fixed) model, num_ctx is deliberately omitted (see below).
@@ -282,23 +274,21 @@ function syncCtxLockForModel() {
 }
 
 /**
- * Load models into the chat model selector (druid-select watches its
- * light-DOM <option> children).
+ * Fill the chat model selector (druid-select watches its light-DOM <option>
+ * children) from the shared model list, keeping the current selection.
+ * @param {Array<Object>} models - The /models entries (see lastModels).
  */
-async function loadChatModelSelect() {
+function renderChatModelSelect(models) {
     const select = document.getElementById("chat-model-select");
     if (!select) return;
 
-    const data = await fetchAPI("/models");
-    if (data.error || !data.models) return;
-
     const currentValue = select.value;
-    select.innerHTML = data.models
-        .map((model) => `<option value="${escapeHtml(model.name)}">${escapeHtml(model.name)}</option>`)
+    select.innerHTML = models
+        .map((model) => `<option value="${escapeAttr(model.name)}">${escapeHtml(model.name)}</option>`)
         .join("");
 
     // Restore previous selection if still available
-    if (currentValue && data.models.some((m) => m.name === currentValue)) {
+    if (currentValue && models.some((m) => m.name === currentValue)) {
         select.value = currentValue;
     }
 
@@ -538,7 +528,6 @@ async function sendMessage(message, images = []) {
     renderChatMessages();
 
     try {
-        const promptMode = getPromptMode();
         const contextMessages = chatMessages.slice(0, -1).map((m) => {
             const out = { role: m.role, content: m.content };
             // ollama wants raw base64 strings on message.images
@@ -554,62 +543,27 @@ async function sendMessage(message, images = []) {
             contextMessages.unshift({ role: "system", content: systemPrompt });
         }
 
-        const response =
-            promptMode === "generate"
-                ? await generate({
-                      model: model,
-                      prompt: message,
-                      options: options,
-                  })
-                : await chat({
-                      model: model,
-                      messages: contextMessages,
-                      options: options,
-                      think: think,
-                      // Tool-capable models get an empty placeholder tool that
-                      // takes no args and returns nothing, so the tools path is
-                      // exercised without changing the conversation.
-                      tools: supportsTools ? [EMPTY_TOOL_TEMPLATE] : null,
-                  });
+        const body = { model, messages: contextMessages, options };
+        if (think) body.think = true;
+        // Tool-capable models get an empty placeholder tool that takes no args
+        // and returns nothing, so the tools path is exercised without changing
+        // the conversation.
+        if (supportsTools) body.tools = [EMPTY_TOOL_TEMPLATE];
 
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-
-        while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-
-            const text = decoder.decode(value);
-            const lines = text.split("\n");
-
-            for (const line of lines) {
-                if (line.startsWith("data: ")) {
-                    try {
-                        const data = JSON.parse(line.slice(6));
-
-                        if (data.error) {
-                            chatMessages[chatMessages.length - 1].content = `Error: ${data.error}`;
-                            renderChatMessages();
-                            break;
-                        }
-
-                        // Chat mode response
-                        if (data.message && data.message.content) {
-                            chatMessages[chatMessages.length - 1].content += data.message.content;
-                            updateStreamingMessage(chatMessages.length - 1);
-                        }
-
-                        // Handle thinking content if present
-                        if (data.message && data.message.thinking) {
-                            chatMessages[chatMessages.length - 1].thinking += data.message.thinking;
-                            updateStreamingMessage(chatMessages.length - 1);
-                        }
-                    } catch (e) {}
-                }
+        await streamSSE("/chat", body, (data) => {
+            if (data.error) {
+                assistantMsg.content = `Error: ${data.error}`;
+                renderChatMessages();
+                return false;
             }
-        }
+            if (data.message?.content) assistantMsg.content += data.message.content;
+            if (data.message?.thinking) assistantMsg.thinking += data.message.thinking;
+            if (data.message?.content || data.message?.thinking) {
+                updateStreamingMessage(chatMessages.length - 1);
+            }
+        });
     } catch (error) {
-        chatMessages[chatMessages.length - 1].content = `Error: ${error.message}`;
+        assistantMsg.content = `Error: ${error.message}`;
         renderChatMessages();
     } finally {
         isGenerating = false;

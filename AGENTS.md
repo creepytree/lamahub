@@ -63,6 +63,10 @@ element come from the installed `druids` package.
   fills the `styles`, `actions`, `content`, `scripts` blocks with `<druid-*>` tags
   (the `<druid-tabs>` strip lives above the panels in `content`, not in the navbar;
   tabs: Models / Deploy / Prompt / Log; the Log tab is a plain `<druid-log-view>`).
+  The navbar (from `druids/base.jinja2`) renders both theme pickers itself —
+  `<druid-accent-picker>` and, since druids 1.0.10, `<druid-flavor-picker>` next to it —
+  so the app adds no picker markup; app CSS must use the surface tokens (`--bg`,
+  `--bg-raised`, `--border`, `--text`, …) so the flavor tint reaches it.
   All three data tables are `<druid-table sortable>` around a
   `<table class="df-table wide">` — sorting keys off a `<th data-key>` and a cell's
   `data-value`, `<th data-sort="none">` opts a column out, `wide` gives the table the
@@ -88,4 +92,12 @@ element come from the installed `druids` package.
   icons are Lucide SVGs registered via `druids.registerIcons()` in `icons.js` and
   referenced as `<druid-icon name>` / `<druid-icon-button icon>`; generated markup
   uses `<druid-*>` elements and `lh-*` classes.
-- `lamahub/services/` — Ollama client, endpoint registry, fixed-model store, logging.
+- `lamahub/services/` — Ollama client (`ollama.py`, all HTTP through `_request` /
+  `_stream_lines`), endpoint registry, fixed-model store, HF browse (`hf_hub.py`) and
+  deploy pipeline + `DeployQueue` (`hf_deploy.py`), staging cache, logging; the stores share
+  `jsonfile.py` for atomic JSON writes.
+- Client data flow: `fetchModels()` in `models.js` is the one `/models` fetch — it fills
+  `lastModels`, which the models table, rail stats, chat selector and the Deploy tab's
+  "deployed" check all read. Streaming calls (chat, pull, update) go through
+  `streamSSE()` in `requests.js`; `placeholderRow` / `renderProgress` / `escapeAttr`
+  live in `utils.js`.

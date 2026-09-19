@@ -112,6 +112,20 @@ function formatBytes(bytes) {
 }
 
 /**
+ * Format a duration compactly (e.g. 5400 -> "1h 30m", 95 -> "1m 35s").
+ * @param {number} seconds - Duration in seconds.
+ * @returns {string} Formatted duration.
+ */
+function formatDuration(seconds) {
+    const total = Math.max(0, Math.round(seconds));
+    const h = Math.floor(total / 3600);
+    const m = Math.floor((total % 3600) / 60);
+    if (h) return `${h}h ${m}m`;
+    if (m) return `${m}m ${total % 60}s`;
+    return `${total}s`;
+}
+
+/**
  * Format date string to locale date.
  * @param {string} dateString - ISO date string.
  * @returns {string} Formatted locale date.
@@ -146,4 +160,37 @@ function escapeHtml(text) {
     const div = document.createElement("div");
     div.textContent = text;
     return div.innerHTML;
+}
+
+/**
+ * Escape text for use inside a double-quoted HTML attribute.
+ * @param {string} text - Text to escape.
+ * @returns {string} Escaped text.
+ */
+function escapeAttr(text) {
+    return escapeHtml(text).replace(/"/g, "&quot;");
+}
+
+/**
+ * Render a full-width placeholder row for a data table.
+ * @param {string} message - Text to show.
+ * @param {string} [cls] - Extra class on the empty block (e.g. "df-danger").
+ * @param {number} [colspan] - Columns to span.
+ * @returns {string} HTML markup.
+ */
+function placeholderRow(message, cls = "", colspan = 6) {
+    return `<tr><td colspan="${colspan}"><div class="df-empty ${cls}">${message}</div></td></tr>`;
+}
+
+/**
+ * Reflect byte progress onto a <druid-progress> and its "x / y (n%)" label.
+ * @param {HTMLElement|null} bar - The progress element.
+ * @param {HTMLElement|null} label - The text element next to it.
+ * @param {number} completed - Bytes done.
+ * @param {number} total - Bytes expected (> 0).
+ */
+function renderProgress(bar, label, completed, total) {
+    const percent = Math.round((completed / total) * 100);
+    bar?.setAttribute("value", String(percent));
+    if (label) label.textContent = `${formatBytes(completed)} / ${formatBytes(total)} (${percent}%)`;
 }

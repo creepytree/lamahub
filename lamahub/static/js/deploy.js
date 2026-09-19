@@ -12,16 +12,6 @@ const hfQuantsCache = {};
 let stagedById = {};
 
 /**
- * Render a full-width placeholder row for either Deploy-tab table.
- * @param {string} message - Text to show.
- * @param {string} [cls] - Extra class on the empty block (e.g. "df-danger").
- * @returns {string} HTML markup.
- */
-function deployPlaceholder(message, cls = "") {
-    return `<tr><td colspan="6"><div class="df-empty ${cls}">${message}</div></td></tr>`;
-}
-
-/**
  * Format large counts compactly (e.g. 2854700 -> "2.9M").
  * @param {number} count - Raw count.
  * @returns {string} Compact string.
@@ -61,7 +51,7 @@ async function hfSearch(loadMore = false) {
     const cursor = loadMore ? hfNextCursor : "";
     if (!loadMore) {
         hfLastQuery = query;
-        container.innerHTML = deployPlaceholder("Searching…");
+        container.innerHTML = placeholderRow("Searching…");
     }
 
     const params = new URLSearchParams();
@@ -74,13 +64,13 @@ async function hfSearch(loadMore = false) {
     busyBtn?.removeAttribute("loading");
 
     if (data.error) {
-        container.innerHTML = deployPlaceholder(`Error: ${escapeHtml(data.error)}`, "df-danger");
+        container.innerHTML = placeholderRow(`Error: ${escapeHtml(data.error)}`, "df-danger");
         moreBtn.hidden = true;
         return;
     }
 
     const rows = (data.items || []).map((item) => {
-        const repoAttr = escapeHtml(item.id).replace(/"/g, "&quot;");
+        const repoAttr = escapeAttr(item.id);
         const pipeline = item.pipeline.includes("image") ? "vision" : item.pipeline ? "text" : "-";
         const gated = item.gated ? ' <span class="df-badge">gated</span>' : "";
         return `
@@ -96,7 +86,7 @@ async function hfSearch(loadMore = false) {
     });
 
     if (!rows.length && !loadMore) {
-        container.innerHTML = deployPlaceholder("No GGUF models found");
+        container.innerHTML = placeholderRow("No GGUF models found");
         moreBtn.hidden = true;
         return;
     }
@@ -140,7 +130,7 @@ function clearHfResults() {
     const table = document.getElementById("hf-results-table");
     if (input) input.value = "";
     if (container) {
-        container.innerHTML = deployPlaceholder("Search HuggingFace for GGUF models to deploy");
+        container.innerHTML = placeholderRow("Search HuggingFace for GGUF models to deploy");
     }
     if (moreBtn) moreBtn.hidden = true;
     if (table) table.removeAttribute("sort");
@@ -178,13 +168,13 @@ async function fillQuantPopover(popEl) {
     if (!quants.length) {
         body.innerHTML = '<div class="lh-quant-pop-empty df-muted">No deployable GGUF files</div>';
     } else {
-        const repoAttr = escapeHtml(repo).replace(/"/g, "&quot;");
+        const repoAttr = escapeAttr(repo);
         body.innerHTML = `
         <table class="lh-quant-poptable"><tbody>
             ${quants
                 .map((quant) => {
-                    const famAttr = escapeHtml(quant.family).replace(/"/g, "&quot;");
-                    const labelAttr = escapeHtml(quant.label).replace(/"/g, "&quot;");
+                    const famAttr = escapeAttr(quant.family);
+                    const labelAttr = escapeAttr(quant.label);
                     const shardText = `${quant.shards.length} shard${quant.shards.length === 1 ? "" : "s"}`;
                     return `
                 <tr class="lh-quant-pop-row"
@@ -216,12 +206,16 @@ function selectQuant(event, repo, family, label) {
 }
 
 let deployPollTimer = null;
+// highest finished-job id already reported, so each result toasts exactly once
+// (also across page reloads: seeded from the history on init)
+let lastReportedJob = 0;
 
 /**
- * Prompt for a model name and start a deploy on the active endpoint.
+ * Prompt for a model name and queue a deploy on the active endpoint.
  *
- * The deploy runs server-side as a detached task, so it keeps going if the
- * browser is closed during a multi-GB download; the UI only observes it.
+ * Deploys run server-side as detached tasks, one at a time (the rest wait in a
+ * FIFO queue), so they keep going if the browser is closed during a multi-GB
+ * download; the UI only observes them.
  * @param {string} repo - HF repo id.
  * @param {string} family - Quant family base path.
  * @param {string} label - Quant label for the name suggestion.
@@ -239,7 +233,7 @@ async function deployQuant(repo, family, label) {
 }
 
 /**
- * Start a deploy on the active endpoint and attach the progress strip.
+ * Queue a deploy on the active endpoint and attach the progress strip.
  * @param {string} repo - HF repo id.
  * @param {string} family - Quant family base path.
  * @param {string} modelName - Target model name on the endpoint.
@@ -249,12 +243,26 @@ async function startDeploy(repo, family, modelName) {
         method: "POST",
         body: JSON.stringify({ repo, family, model_name: modelName }),
     });
-    if (result.status !== "started") {
-        // refused (e.g. a deploy is already running — they are serialized)
+    if (result.status === "queued") {
+        showNotification(`Queued "${modelName}" (#${result.position})`, "info");
+    } else if (result.status !== "started") {
+        // refused (e.g. the same family is already queued for this endpoint)
         showNotification(result.message || "Deploy could not be started", "warning");
         return;
     }
     startDeployTracking();
+}
+
+/**
+ * Remove a waiting deploy from the server-side queue.
+ * @param {number} jobId - Queue job id.
+ */
+async function cancelQueuedDeploy(jobId) {
+    const result = await fetchAPI(`/hf/deploy/queue/${jobId}`, { method: "DELETE" });
+    if (result.status !== "success") {
+        showNotification(result.message || "Could not cancel", "warning");
+    }
+    pollDeployStatus();
 }
 
 /**
@@ -268,8 +276,33 @@ function startDeployTracking() {
 }
 
 /**
- * Poll /hf/deploy/status once and reflect it onto the progress strip. Ends the
- * poll (and refreshes the dashboard) when the deploy finishes.
+ * Render the waiting deploys under the progress strip.
+ * @param {Array<object>} queue - Waiting jobs from /hf/deploy/status.
+ */
+function renderDeployQueue(queue) {
+    const list = document.getElementById("hf-deploy-queue");
+    if (!list) return;
+    list.hidden = !queue.length;
+    list.innerHTML = queue
+        .map(
+            (job, index) => `
+        <div class="df-row lh-queue-row">
+            <span class="df-muted">#${index + 1}</span>
+            <span class="lh-queue-name">${escapeHtml(job.model_name)}</span>
+            <span class="df-muted lh-queue-repo">${escapeHtml(job.repo)}</span>
+            <druid-icon-button circle small class="df-danger" icon="x"
+                    onclick="cancelQueuedDeploy(${job.id})"
+                    label="Remove ${escapeHtml(job.model_name)} from the queue"></druid-icon-button>
+        </div>`,
+        )
+        .join("");
+}
+
+/**
+ * Poll /hf/deploy/status once and reflect it onto the progress strip + queue.
+ * Reports every job that finished since the last poll (several can finish
+ * between two polls when cached shards redeploy instantly), refreshes the
+ * dashboard after each, and ends the poll once the queue has drained.
  */
 async function pollDeployStatus() {
     const statusRow = document.getElementById("hf-deploy-status");
@@ -279,37 +312,75 @@ async function pollDeployStatus() {
     if (!statusRow) return;
 
     const data = await fetchAPI("/hf/deploy/status");
+    if (!data || data.error) return;
 
-    if (!data || !data.active) {
-        window.clearInterval(deployPollTimer);
-        deployPollTimer = null;
-        statusRow.hidden = true;
-        if (data && data.error) {
-            showNotification(`Deploy error: ${data.error}`, "danger");
-        } else if (data && data.model) {
-            showNotification(`Deployed "${data.model}" successfully!`, "success");
+    const finished = (data.history || []).filter((job) => job.id > lastReportedJob);
+    for (const job of finished) {
+        if (job.error) {
+            showNotification(`Deploy of "${job.model_name}" failed: ${job.error}`, "danger");
+        } else if (job.model) {
+            showNotification(`Deployed "${job.model}" successfully!`, "success");
         }
+        lastReportedJob = job.id;
+    }
+    if (finished.length) {
         // refresh models first so loadStaged sees the just-deployed model in the
         // cache (otherwise the fresh family would flash as "removed")
         await loadModelsList();
         loadStaged();
-        loadTotalModels();
-        loadTotalStorage();
+    }
+
+    renderDeployQueue(data.queue || []);
+    const job = data.current;
+    if (!data.active || !job) {
+        if (!data.active) {
+            window.clearInterval(deployPollTimer);
+            deployPollTimer = null;
+        }
+        statusRow.hidden = true;
         return;
     }
 
     statusRow.hidden = false;
-    statusText.textContent = data.status || "Deploying...";
-    if (data.total > 0) {
-        const percent = Math.round((data.completed / data.total) * 100);
-        progressBar.setAttribute("value", String(percent));
-        progressPercent.textContent = `${formatBytes(data.completed)} / ${formatBytes(data.total)} (${percent}%)`;
-    } else if (data.stage === "create") {
+    const modelEl = document.getElementById("hf-deploy-model");
+    const stageEl = document.getElementById("hf-deploy-stage");
+    const rateEl = document.getElementById("hf-deploy-rate");
+    modelEl.textContent = job.model_name;
+    modelEl.title = `${job.model_name}\n${job.repo}`;
+    stageEl.textContent = deployStageLabel(job);
+    // status carries the file and any retry note, e.g. "downloading x.gguf (1/2) — retry 1/6"
+    statusText.textContent = job.status || "";
+    statusText.title = job.status || "";
+
+    rateEl.textContent = "";
+    if (job.total > 0) {
+        renderProgress(progressBar, progressPercent, job.completed, job.total);
+        if (job.rate > 0) {
+            const eta = (job.total - job.completed) / job.rate;
+            rateEl.textContent = `${formatBytes(job.rate)}/s · ${formatDuration(eta)} left`;
+        } else if (job.stage === "download" || job.stage === "upload") {
+            rateEl.textContent = "waiting for data…";
+        }
+    } else if (job.stage === "create") {
         progressBar.setAttribute("value", "100");
         progressPercent.textContent = "assembling…";
     } else {
+        progressBar.setAttribute("value", "0");
         progressPercent.textContent = "";
     }
+}
+
+/**
+ * Short stage badge for the progress strip, e.g. "download 1/2".
+ * @param {Object} job - The live deploy record.
+ * @returns {string} Label.
+ */
+function deployStageLabel(job) {
+    const action = (job.status || "").split(" ")[0];
+    if (action === "verifying" || action === "reconnecting") return action;
+    if (job.stage === "create") return "assemble";
+    if (job.total_shards > 0) return `${job.stage} ${job.shard}/${job.total_shards}`;
+    return job.stage || "starting";
 }
 
 /**
@@ -331,9 +402,9 @@ async function loadStaged() {
     // endpoint: if the model was deleted since, flip the badge to "removed" so
     // the stale state is visible and the redeploy action reads as meaningful.
     // Scoped to the active endpoint (families remember which endpoints they
-    // reached) so a model deployed only elsewhere isn't wrongly flagged. Reuses
-    // the models list cached by loadModelsList (no extra fetch); when it hasn't
-    // loaded yet the check is simply skipped until the next refresh.
+    // reached) so a model deployed only elsewhere isn't wrongly flagged. Reads
+    // the shared lastModels (no extra fetch); when it hasn't loaded yet the
+    // check is simply skipped until the next refresh.
     const activeEndpoint = getSelectedEndpoint();
     // Compare names case-INSENSITIVELY: Ollama canonicalizes a known quant tag
     // on create (we send "qwen3-0.6b:q4_k_m", /api/tags reports it back as
@@ -358,13 +429,13 @@ async function loadStaged() {
     }
 
     if (!families.length) {
-        list.innerHTML = deployPlaceholder("Nothing staged");
+        list.innerHTML = placeholderRow("Nothing staged");
         return;
     }
 
     list.innerHTML = families
         .map((family) => {
-            const idAttr = escapeHtml(family.id).replace(/"/g, "&quot;");
+            const idAttr = escapeAttr(family.id);
             const endpoints = (family.endpoints || []).map((url) => escapeHtml(url)).join("<br>") || "-";
             const shards = family.shards || [];
             const shardCount = shards.length;
@@ -496,9 +567,13 @@ async function initDeployTab() {
     // note: loadStaged is driven by refreshAllData (after the models cache warms)
     // so the "deployed" badges verify against a loaded model list, not a cold one
 
-    // if a deploy is still running (e.g. the page was reloaded mid-download),
-    // re-attach the progress strip to it
+    // if deploys are still running (e.g. the page was reloaded mid-download),
+    // re-attach the progress strip; results finished before the reload are
+    // treated as already reported
     const status = await fetchAPI("/hf/deploy/status");
+    for (const job of (status && status.history) || []) {
+        lastReportedJob = Math.max(lastReportedJob, job.id);
+    }
     if (status && status.active) {
         startDeployTracking();
     }

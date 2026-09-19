@@ -6,9 +6,9 @@
 
 let fixedModels = [];
 let fixedModelsLoaded = false;
-// Last /models payload for the active endpoint, cached from loadModelsList so
-// other views (e.g. the Deploy tab's staged table) can reuse it without a
-// second fetch. Refreshed on every models reload; null until the first load.
+// The active endpoint's model list — the one /models fetch everything reads
+// from (models table, rail stats, chat selector, the Deploy tab's "deployed"
+// check). Refreshed by fetchModels(); null until loaded or after an error.
 let lastModels = null;
 
 function normalizeModelName(modelName) {
@@ -31,7 +31,7 @@ function isFixedModel(modelName) {
 
 function renderCopyableModelName(modelName) {
     const escapedName = escapeHtml(modelName);
-    const escapedAttribute = escapedName.replace(/"/g, "&quot;");
+    const escapedAttribute = escapeAttr(modelName);
 
     return `
         <button type="button"
@@ -219,7 +219,6 @@ async function pinModel(modelName) {
             result.message ? `Pinned "${modelName}" — ${result.message}` : `Pinned "${modelName}"`,
             "success",
         );
-        fixedModelsLoaded = false;
         await loadFixedModels();
         loadModelsList();
     } else {
@@ -238,7 +237,6 @@ async function unpinModel(modelName) {
 
     if (result.status === "success") {
         showNotification(`Unpinned "${modelName}"`, "success");
-        fixedModelsLoaded = false;
         await loadFixedModels();
         loadModelsList();
     } else {
@@ -292,25 +290,26 @@ async function loadRunningModels() {
 
     const data = await fetchAPI("/models/running");
 
-    if (data.error) {
-        const markup = `<span class="df-danger">Error: ${escapeHtml(data.error)}</span>`;
+    // polled every 5s: only touch the DOM when the markup actually changed, so
+    // hover state and open tooltips survive a no-op refresh
+    const render = (markup) => {
         if (container.dataset.lastRenderedMarkup !== markup) {
             container.innerHTML = markup;
             container.dataset.lastRenderedMarkup = markup;
         }
+    };
+
+    if (data.error) {
+        render(`<span class="df-danger">Error: ${escapeHtml(data.error)}</span>`);
         return;
     }
 
     if (!data.models || data.models.length === 0) {
-        const markup = '<span class="df-muted">No models running</span>';
-        if (container.dataset.lastRenderedMarkup !== markup) {
-            container.innerHTML = markup;
-            container.dataset.lastRenderedMarkup = markup;
-        }
+        render('<span class="df-muted">No models running</span>');
         return;
     }
 
-    const markup = data.models
+    render(data.models
         .map((model) => {
             const details = model.details || {};
             const params = details.parameter_size || "-";
@@ -342,56 +341,48 @@ async function loadRunningModels() {
         </div>
     `;
         })
-        .join("");
-
-    if (container.dataset.lastRenderedMarkup !== markup) {
-        container.innerHTML = markup;
-        container.dataset.lastRenderedMarkup = markup;
-    }
+        .join(""));
 }
 
 /**
- * Load and display total models count on the dashboard.
+ * Fetch the active endpoint's models once, cache them in lastModels and
+ * refresh the rail stats (model count + disk usage) from the same payload.
+ * @returns {Promise<Object>} The /models response.
  */
-async function loadTotalModels() {
-    const container = document.getElementById("total-models");
-    if (!container) return;
-
+async function fetchModels() {
     const data = await fetchAPI("/models");
-
-    if (data.error) {
-        container.innerHTML = `<span class="df-danger">Error: ${escapeHtml(data.error)}</span>`;
-        return;
-    }
-
-    const count = data.models ? data.models.length : 0;
-    container.innerHTML = `
-        <div class="df-stat-number">${count}</div>
-        <span class="df-stat-caption">models installed</span>
-    `;
-
+    lastModels = data.error ? null : data.models || [];
+    renderModelStats(data);
     return data;
 }
 
 /**
- * Load and display total storage used by models.
+ * Render the rail stat tiles from a /models response.
+ * @param {Object} data - The /models response.
  */
-async function loadTotalStorage() {
-    const container = document.getElementById("total-storage");
-    if (!container) return;
-
-    const data = await fetchAPI("/models");
-
+function renderModelStats(data) {
+    const count = document.getElementById("total-models");
+    const storage = document.getElementById("total-storage");
     if (data.error) {
-        container.innerHTML = `<span class="df-danger">Error: ${escapeHtml(data.error)}</span>`;
+        const markup = `<span class="df-danger">Error: ${escapeHtml(data.error)}</span>`;
+        if (count) count.innerHTML = markup;
+        if (storage) storage.innerHTML = markup;
         return;
     }
-
-    const totalBytes = data.models ? data.models.reduce((sum, model) => sum + (model.size || 0), 0) : 0;
-    container.innerHTML = `
+    const models = data.models || [];
+    const totalBytes = models.reduce((sum, model) => sum + (model.size || 0), 0);
+    if (count) {
+        count.innerHTML = `
+        <div class="df-stat-number">${models.length}</div>
+        <span class="df-stat-caption">models installed</span>
+    `;
+    }
+    if (storage) {
+        storage.innerHTML = `
         <div class="df-stat-number">${formatBytes(totalBytes)}</div>
         <span class="df-stat-caption">total disk usage</span>
     `;
+    }
 }
 
 /**
@@ -425,17 +416,8 @@ function renderCapabilities(capabilities) {
 }
 
 /**
- * Render a full-width placeholder row for the models table.
- * @param {string} message - Text to show.
- * @param {string} [cls] - Extra class on the empty block (e.g. "df-danger").
- * @returns {string} HTML markup.
- */
-function placeholderRow(message, cls = "") {
-    return `<tr><td colspan="6"><div class="df-empty ${cls}">${message}</div></td></tr>`;
-}
-
-/**
- * Load and display the models list table.
+ * Load and display the models list table (and the chat selector, which lists
+ * the same models).
  */
 async function loadModelsList() {
     const container = document.getElementById("models-list");
@@ -447,17 +429,16 @@ async function loadModelsList() {
         await loadFixedModels();
     }
 
-    const data = await fetchAPI("/models");
+    const data = await fetchModels();
 
     if (data.error) {
-        lastModels = null;
         container.innerHTML = placeholderRow(`Error: ${escapeHtml(data.error)}`, "df-danger");
         return;
     }
 
-    lastModels = data.models || [];
+    renderChatModelSelect(lastModels);
 
-    if (!data.models || data.models.length === 0) {
+    if (!lastModels.length) {
         container.innerHTML = placeholderRow("No models installed");
         return;
     }
@@ -465,7 +446,7 @@ async function loadModelsList() {
     // Capabilities aren't in the /models listing, so fetch each model's info in
     // parallel to populate the Capabilities column.
     const rows = await Promise.all(
-        data.models.map(async (model) => {
+        lastModels.map(async (model) => {
             const details = model.details || {};
             const params = details.parameter_size || "-";
             const quant = details.quantization_level || "-";
@@ -558,49 +539,20 @@ async function pullModel() {
     statusRow.hidden = false;
 
     try {
-        const response = await fetch(withBasePath("/api/models/pull"), {
-            method: "POST",
-            headers: requestHeaders(),
-            body: JSON.stringify({ name: modelName }),
-        });
-
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-
-        while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-
-            const text = decoder.decode(value);
-            const lines = text.split("\n");
-
-            for (const line of lines) {
-                if (line.startsWith("data: ")) {
-                    try {
-                        const data = JSON.parse(line.slice(6));
-
-                        if (data.error) {
-                            showNotification(`Error: ${data.error}`, "danger");
-                            statusRow.hidden = true;
-                            btn.removeAttribute("loading");
-                            return;
-                        }
-
-                        if (data.status && statusText) {
-                            statusText.textContent = data.status;
-                        }
-
-                        if (data.total && data.completed !== undefined) {
-                            const percent = Math.round((data.completed / data.total) * 100);
-                            const completedStr = formatBytes(data.completed);
-                            const totalStr = formatBytes(data.total);
-                            if (progressBar) progressBar.setAttribute("value", String(percent));
-                            if (progressPercent)
-                                progressPercent.textContent = `${completedStr} / ${totalStr} (${percent}%)`;
-                        }
-                    } catch (e) {}
-                }
+        const finished = await streamSSE("/models/pull", { name: modelName }, (data) => {
+            if (data.error) {
+                showNotification(`Error: ${data.error}`, "danger");
+                return false;
             }
+            if (data.status) statusText.textContent = data.status;
+            if (data.total && data.completed !== undefined) {
+                renderProgress(progressBar, progressPercent, data.completed, data.total);
+            }
+        });
+        if (!finished) {
+            statusRow.hidden = true;
+            btn.removeAttribute("loading");
+            return;
         }
 
         showNotification(`Model "${modelName}" pulled successfully!`, "success");
@@ -714,49 +666,20 @@ async function updateModel(modelName) {
     const progressPercent = document.getElementById(`update-progress-percent-${safeModelName}`);
 
     try {
-        const response = await fetch(withBasePath("/api/models/update"), {
-            method: "POST",
-            headers: requestHeaders(),
-            body: JSON.stringify({ name: modelName }),
-        });
-
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-
-        while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-
-            const text = decoder.decode(value);
-            const lines = text.split("\n");
-
-            for (const line of lines) {
-                if (line.startsWith("data: ")) {
-                    try {
-                        const data = JSON.parse(line.slice(6));
-
-                        if (data.error) {
-                            showNotification(`Error updating ${modelName}: ${data.error}`, "danger");
-                            statusRow.remove();
-                            updateBtn?.removeAttribute("loading");
-                            return;
-                        }
-
-                        if (data.status && statusText) {
-                            statusText.textContent = `${modelName}: ${data.status}`;
-                        }
-
-                        if (data.total && data.completed !== undefined) {
-                            const percent = Math.round((data.completed / data.total) * 100);
-                            const completedStr = formatBytes(data.completed);
-                            const totalStr = formatBytes(data.total);
-                            if (progressBar) progressBar.setAttribute("value", String(percent));
-                            if (progressPercent)
-                                progressPercent.textContent = `${completedStr} / ${totalStr} (${percent}%)`;
-                        }
-                    } catch (e) {}
-                }
+        const finished = await streamSSE("/models/update", { name: modelName }, (data) => {
+            if (data.error) {
+                showNotification(`Error updating ${modelName}: ${data.error}`, "danger");
+                return false;
             }
+            if (data.status && statusText) statusText.textContent = `${modelName}: ${data.status}`;
+            if (data.total && data.completed !== undefined) {
+                renderProgress(progressBar, progressPercent, data.completed, data.total);
+            }
+        });
+        if (!finished) {
+            statusRow.remove();
+            updateBtn?.removeAttribute("loading");
+            return;
         }
 
         showNotification(`Model "${modelName}" updated successfully!`, "success");

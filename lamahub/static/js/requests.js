@@ -1,46 +1,47 @@
 /**
  * Lamahub - Request Helpers
- * @description Shared request functions for chat and generate endpoints.
+ * @description Reader for the server-sent event streams (chat, pull, update).
  */
 
 /**
- * Send a streaming chat request.
- * @param {Object} params - Request params.
- * @param {string} params.model - Model name.
- * @param {Array<Object>} params.messages - Chat messages.
- * @param {Object} [params.options] - Optional Ollama options.
- * @param {boolean} [params.think] - Enable thinking mode when supported.
- * @param {Array<Object>} [params.tools] - Tool definitions when supported.
- * @returns {Promise<Response>} Fetch response.
+ * POST to a streaming endpoint and hand every `data:` event to a callback.
+ * Lines are buffered across network chunks, so an event split between two
+ * reads is still parsed whole.
+ * @param {string} path - API path below /api (e.g. "/chat").
+ * @param {Object} body - JSON request body.
+ * @param {function(Object): (boolean|void)} onEvent - Called per parsed event;
+ *   return false to stop reading.
+ * @returns {Promise<boolean>} true when the stream ended, false when stopped.
  */
-async function chat({ model, messages, options = {}, think = false, tools = null }) {
-    const body = { model, messages, options };
-    if (think) {
-        body.think = true;
-    }
-    if (tools && tools.length) {
-        body.tools = tools;
-    }
-
-    return fetch(withBasePath("/api/chat"), {
+async function streamSSE(path, body, onEvent) {
+    const response = await fetch(withBasePath(`/api${path}`), {
         method: "POST",
         headers: requestHeaders(),
         body: JSON.stringify(body),
     });
-}
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
 
-/**
- * Send a streaming generate request.
- * @param {Object} params - Request params.
- * @param {string} params.model - Model name.
- * @param {string} params.prompt - Prompt text.
- * @param {Object} [params.options] - Optional Ollama options.
- * @returns {Promise<Response>} Fetch response.
- */
-async function generate({ model, prompt, options = {} }) {
-    return fetch(withBasePath("/api/generate"), {
-        method: "POST",
-        headers: requestHeaders(),
-        body: JSON.stringify({ model, prompt, options }),
-    });
+    while (true) {
+        const { done, value } = await reader.read();
+        if (done) return true;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop();
+        for (const line of lines) {
+            if (!line.startsWith("data: ")) continue;
+            let data;
+            try {
+                data = JSON.parse(line.slice(6));
+            } catch (e) {
+                continue;
+            }
+            if (onEvent(data) === false) {
+                reader.cancel();
+                return false;
+            }
+        }
+    }
 }

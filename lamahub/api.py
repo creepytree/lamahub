@@ -1,6 +1,5 @@
 """REST API endpoints for interacting with Ollama models."""
 
-import asyncio
 from typing import Any
 
 from fastapi import APIRouter, Depends, Header
@@ -10,7 +9,7 @@ from lamahub.env import env
 from lamahub.extensions import logger
 from lamahub.services.endpoints import Endpoint, registry
 from lamahub.services.ollama import MODEL_KINDS, normalize_model_name, ollama_service
-from lamahub.services import fixed_store, hf_deploy, staging_store
+from lamahub.services import fixed_store, hf_deploy, hf_hub, staging_store
 
 api = APIRouter(prefix="/api")
 
@@ -22,6 +21,20 @@ async def resolve_endpoint(x_ollama_url: str | None = Header(default=None)) -> E
     missing values fall back to the default endpoint.
     """
     return registry.resolve(x_ollama_url)
+
+
+def _sse(lines) -> StreamingResponse:
+    """Relay an async iterator of JSON lines as a server-sent event stream."""
+
+    async def events():
+        async for line in lines:
+            yield f"data: {line}\n\n"
+
+    return StreamingResponse(events(), media_type="text/event-stream")
+
+
+# Fixed models are managed only on the default endpoint (see endpoints.py).
+_NOT_DEFAULT = {"status": "error", "message": "Fixed models are managed on the default endpoint"}
 
 
 @api.get("/logs")
@@ -76,12 +89,10 @@ async def get_fixed_models(endpoint: Endpoint = Depends(resolve_endpoint)):
 # Declared before the generic "/models/{model_name:path}" delete so a
 # "/models/fixed/..." path is not swallowed by it.
 @api.put("/models/fixed/{model_name:path}")
-async def pin_fixed_model(
-    model_name: str, data: dict[str, Any], endpoint: Endpoint = Depends(resolve_endpoint)
-):
+async def pin_fixed_model(model_name: str, data: dict[str, Any], endpoint: Endpoint = Depends(resolve_endpoint)):
     """Pin a model in the UI-managed layer, optionally at a fixed context length."""
     if not registry.is_default(endpoint.url):
-        return {"status": "error", "message": "Fixed models are managed on the default endpoint"}
+        return _NOT_DEFAULT
     if ollama_service.is_env_fixed_model(model_name):
         return {"status": "error", "message": f"Model {model_name} is set via FIXED_MODELS and cannot be edited"}
 
@@ -121,7 +132,7 @@ async def pin_fixed_model(
 async def unpin_fixed_model(model_name: str, endpoint: Endpoint = Depends(resolve_endpoint)):
     """Remove a UI pin. env FIXED_MODELS entries cannot be removed here."""
     if not registry.is_default(endpoint.url):
-        return {"status": "error", "message": "Fixed models are managed on the default endpoint"}
+        return _NOT_DEFAULT
     if ollama_service.is_env_fixed_model(model_name):
         return {"status": "error", "message": f"Model {model_name} is set via FIXED_MODELS and cannot be removed"}
 
@@ -134,19 +145,25 @@ async def unpin_fixed_model(model_name: str, endpoint: Endpoint = Depends(resolv
     return {"status": "error", "message": f"Model {model_name} is not pinned"}
 
 
-@api.post("/models/pull")
-async def pull_model(data: dict[str, Any], endpoint: Endpoint = Depends(resolve_endpoint)):
-    """Pull a new model with streaming progress"""
+def _pull(verb: str, data: dict[str, Any], endpoint: Endpoint):
+    """Stream an Ollama pull; shared by pull (new model) and update (re-pull)."""
     model_name = data.get("name")
     if not model_name:
         return {"status": "error", "message": "Model name is required"}
-    logger.info(f"Pulling model: {model_name} on {endpoint.url}")
+    logger.info(f"{verb} model: {model_name} on {endpoint.url}")
+    return _sse(ollama_service.pull_model_stream(endpoint.url, model_name))
 
-    async def stream_progress():
-        async for line in ollama_service.pull_model_stream(endpoint.url, model_name):
-            yield f"data: {line}\n\n"
 
-    return StreamingResponse(stream_progress(), media_type="text/event-stream")
+@api.post("/models/pull")
+async def pull_model(data: dict[str, Any], endpoint: Endpoint = Depends(resolve_endpoint)):
+    """Pull a new model with streaming progress"""
+    return _pull("Pulling", data, endpoint)
+
+
+@api.post("/models/update")
+async def update_model(data: dict[str, Any], endpoint: Endpoint = Depends(resolve_endpoint)):
+    """Update a model with streaming progress"""
+    return _pull("Updating", data, endpoint)
 
 
 @api.delete("/models/{model_name:path}")
@@ -197,12 +214,7 @@ async def chat(data: dict[str, Any], endpoint: Endpoint = Depends(resolve_endpoi
     if not messages:
         return {"error": "Messages are required"}
     logger.info(f"Chat with model: {model_name}, options: {options}, think: {think}, tools: {bool(tools)}")
-
-    async def stream_response():
-        async for line in ollama_service.chat_stream(endpoint.url, model_name, messages, options, think, tools):
-            yield f"data: {line}\n\n"
-
-    return StreamingResponse(stream_response(), media_type="text/event-stream")
+    return _sse(ollama_service.chat_stream(endpoint.url, model_name, messages, options, think, tools))
 
 
 @api.post("/generate")
@@ -216,12 +228,7 @@ async def generate(data: dict[str, Any], endpoint: Endpoint = Depends(resolve_en
     if not prompt:
         return {"error": "Prompt is required"}
     logger.info(f"Generate with model: {model_name}, options: {options}")
-
-    async def stream_response():
-        async for line in ollama_service.generate_stream(endpoint.url, model_name, prompt, options):
-            yield f"data: {line}\n\n"
-
-    return StreamingResponse(stream_response(), media_type="text/event-stream")
+    return _sse(ollama_service.generate_stream(endpoint.url, model_name, prompt, options))
 
 
 # ---------------------------------------------------------------------------
@@ -231,40 +238,44 @@ async def generate(data: dict[str, Any], endpoint: Endpoint = Depends(resolve_en
 @api.get("/hf/search")
 async def hf_search(q: str = "", cursor: str = ""):
     """Search GGUF repos on HuggingFace (cursor-paginated)."""
-    return await hf_deploy.search_models(q, cursor)
+    return await hf_hub.search_models(q, cursor)
 
 
 @api.get("/hf/repo/{repo:path}/quants")
 async def hf_repo_quants(repo: str):
     """List a repo's quant families with sizes and shard counts."""
-    return {"quants": await hf_deploy.repo_quants(repo)}
+    return {"quants": await hf_hub.repo_quants(repo)}
 
 
 @api.post("/hf/deploy")
 async def hf_deploy_model(data: dict[str, Any], endpoint: Endpoint = Depends(resolve_endpoint)):
-    """Start a deploy as a detached background task; observe via /hf/deploy/status.
-
-    Decoupled from this request so a browser reload or tab close doesn't abort a
-    long (multi-GB) download. Serialized: only one deploy runs at a time.
+    """Queue a deploy; it runs as a detached background task (observe via
+    /hf/deploy/status), so a browser reload or tab close doesn't abort a long
+    (multi-GB) download. Deploys run one at a time, the rest wait FIFO.
     """
     repo = data.get("repo")
     family = data.get("family")
     model_name = (data.get("model_name") or "").strip()
     if not repo or not family or not model_name:
         return {"status": "error", "message": "repo, family and model_name are required"}
-    if hf_deploy.deploy_active:
-        return {"status": "error", "message": "Another deploy is already running"}
-    # set the guard synchronously (before any await) so a concurrent start can't race in
-    hf_deploy.deploy_active = True
-    logger.info(f"Deploying HF {repo} [{family}] as {model_name} on {endpoint.url}")
-    asyncio.create_task(hf_deploy.run_deploy(endpoint.url, repo, family, model_name))
-    return {"status": "started", "model_name": model_name}
+    result = hf_deploy.deploys.enqueue(endpoint.url, repo, family, model_name)
+    if result["status"] == "queued":
+        logger.info(f"Queued HF {repo} [{family}] as {model_name} on {endpoint.url} (#{result['position']})")
+    return {**result, "model_name": model_name}
+
+
+@api.delete("/hf/deploy/queue/{job_id}")
+async def hf_cancel_queued(job_id: int):
+    """Remove a waiting deploy from the queue."""
+    if hf_deploy.deploys.cancel(job_id):
+        return {"status": "success"}
+    return {"status": "error", "message": "Not queued (already running or finished)"}
 
 
 @api.get("/hf/deploy/status")
 async def hf_deploy_status():
-    """Live progress of the in-flight (or last) deploy, for the client poll."""
-    return hf_deploy.current_deploy or {"active": False}
+    """Live deploy, waiting queue and recent results, for the client poll."""
+    return hf_deploy.deploys.status()
 
 
 @api.get("/hf/staging")
@@ -276,23 +287,8 @@ async def hf_staging():
 @api.delete("/hf/staging/{family_id}")
 async def hf_prune_staging(family_id: str):
     """Prune one staged family from the local cache (models on Ollama keep their blobs)."""
-    if hf_deploy.deploy_active:
+    if hf_deploy.deploys.active:
         return {"status": "error", "message": "Cannot prune while a deploy is running"}
     if staging_store.prune(family_id):
         return {"status": "success"}
     return {"status": "error", "message": "Not staged"}
-
-
-@api.post("/models/update")
-async def update_model(data: dict[str, Any], endpoint: Endpoint = Depends(resolve_endpoint)):
-    """Update a model with streaming progress"""
-    model_name = data.get("name")
-    if not model_name:
-        return {"status": "error", "message": "Model name is required"}
-    logger.info(f"Updating model: {model_name} on {endpoint.url}")
-
-    async def stream_progress():
-        async for line in ollama_service.pull_model_stream(endpoint.url, model_name):
-            yield f"data: {line}\n\n"
-
-    return StreamingResponse(stream_progress(), media_type="text/event-stream")
