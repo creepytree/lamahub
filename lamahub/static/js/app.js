@@ -1,0 +1,113 @@
+/**
+ * Lamahub - Main Application
+ * @description Initializes the application and sets up event listeners.
+ * Tabs, toasts, the log view and accent theming are handled by the druids
+ * framework; this only wires app behavior onto the druid elements.
+ */
+
+/**
+ * Initialize page functionality on DOM load.
+ */
+document.addEventListener("DOMContentLoaded", function () {
+    console.log("DOM loaded, initializing application");
+
+    // Ensure markdown-it is initialized
+    if (!md) {
+        initializeMarkdown();
+    }
+
+    // Load all dashboard data. Resolve the active endpoint first so every
+    // subsequent request carries the correct X-Ollama-Url header.
+    console.log("Loading dashboard data");
+    initializeModelNameCopyHandlers();
+    loadEndpoints().then(refreshAllData);
+
+    // Set up refresh intervals
+    setInterval(() => loadRunningModels(), 5000);
+    setInterval(fetchModels, 30000); // rail stats; 30s keeps log noise down
+
+    // Set up model pull functionality
+    const pullBtn = document.getElementById("pull-model-btn");
+    if (pullBtn) {
+        pullBtn.addEventListener("click", pullModel);
+    }
+
+    // the header's druid-search drives druid-table's filter (it reapplies
+    // itself on every rebuild, so nothing to re-run after a reload)
+    const modelSearchInput = document.getElementById("model-search-input");
+    const modelsTable = document.getElementById("models-table");
+    if (modelSearchInput && modelsTable) {
+        modelSearchInput.addEventListener("search", (e) => modelsTable.setFilter(e.detail.value));
+    }
+
+    const modelInput = document.getElementById("model-name-input");
+    if (modelInput) {
+        modelInput.addEventListener("keypress", (e) => {
+            if (e.key === "Enter") {
+                pullModel();
+            }
+        });
+    }
+
+    // Set up reset sort button
+    const resetSortBtn = document.getElementById("reset-sort-btn");
+    if (resetSortBtn) {
+        resetSortBtn.addEventListener("click", resetTableSort);
+    }
+
+    // Options panel visibility follows the toggle button's active state
+    const optionsBtn = document.getElementById("prompt-options-btn");
+    const optionsPanel = document.getElementById("prompt-options");
+    if (optionsBtn && optionsPanel) {
+        optionsBtn.addEventListener("toggle-change", (e) => {
+            optionsPanel.hidden = !e.detail.active;
+        });
+    }
+
+    // Set up chat functionality
+    const sendChatBtn = document.getElementById("send-chat-btn");
+    if (sendChatBtn) {
+        sendChatBtn.addEventListener("click", sendChatMessage);
+    }
+
+    const chatInput = document.getElementById("chat-input");
+    if (chatInput) {
+        chatInput.addEventListener("keypress", (e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                sendChatMessage();
+            }
+        });
+    }
+
+    const clearChatBtn = document.getElementById("clear-chat-btn");
+    if (clearChatBtn) {
+        clearChatBtn.addEventListener("click", clearChat);
+    }
+
+    initSystemPrompt();
+    initThinking();
+    initChatAttachments();
+    initDeployTab();
+});
+
+// code highlight theme follows the resolved druids theme (<html data-theme>)
+function syncCodeTheme() {
+    const light = document.documentElement.dataset.theme === "light";
+    document.getElementById("hljs-light").disabled = !light;
+    document.getElementById("hljs-dark").disabled = light;
+}
+syncCodeTheme();
+new MutationObserver(syncCodeTheme).observe(document.documentElement, { attributeFilter: ["data-theme"] });
+
+// Socket.io event handlers
+if (typeof socket !== "undefined") {
+    socket.on("connect", function () {
+        console.log("Connected to server");
+    });
+
+    socket.on("model_update", function (data) {
+        console.log("Model update received:", data);
+        refreshAllData();
+    });
+}

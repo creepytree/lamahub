@@ -1,0 +1,612 @@
+/* lamahub app-specific UI. Everything design-system-shaped (tokens, cards,
+   tables, buttons, tabs, dialogs, toasts, alerts, empty states, layout and form
+   primitives, element typography, log view) comes from druids; this file only
+   covers the dashboard shell, the quant popover, chat sizing and the markdown
+   deltas a chat bubble needs. All colors are druids design tokens. */
+
+/* the dashboard is a full-width app surface, not a centered reading column —
+   override the framework's default max-width so it uses the whole viewport */
+main {
+    max-width: none;
+}
+
+/* drop the header divider on the rail tiles so the small cards read as one calm
+   block instead of a stack of ruled boxes (the weight itself is .quiet) */
+.lh-stats .df-card-header {
+    border-bottom: none;
+}
+
+/* tab strip lives above the panels (in the right column), not in the navbar */
+.lh-panels > druid-tabs {
+    flex: 0 0 auto;
+    margin-bottom: 12px;
+}
+
+/* [hidden] must beat component/class display rules */
+[hidden] {
+    display: none !important;
+}
+
+/* ---------- persistent stats rail + tab panels ----------
+   The stats rail lives outside the tab panels so it stays visible on every
+   tab. .lh-shell is the flex child of <main> (preserving the height chain
+   that .df-card.fill relies on); the panels stretch in the right column. */
+
+.lh-shell {
+    flex: 1;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: 350px minmax(0, 1fr);
+    gap: 16px;
+}
+
+/* min-width:0 beats the auto minimum a grid item gets from its content — without
+   it the wide models table sets the column's floor, widening the track (and the
+   rail cards sharing it) instead of scrolling inside its own container */
+.lh-panels {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+}
+
+.lh-running-item,
+.lh-fixed-item {
+    flex-wrap: nowrap;
+    justify-content: space-between;
+    padding: 6px 0;
+    border-bottom: 1px solid var(--border);
+}
+
+.lh-running-item > div:first-child,
+.lh-fixed-item > div:first-child {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.lh-running-item:last-child,
+.lh-fixed-item:last-child {
+    border-bottom: none;
+}
+
+/* rail tiles stack the name over its badges, so a long name never squeezes them */
+.lh-stack-info {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+}
+
+/* the exact VRAM/RAM split; .df-warn only remaps accent vars, so color it here */
+.lh-split {
+    color: var(--warn);
+    font-size: 0.85em;
+}
+
+.lh-running-meta {
+    flex-wrap: nowrap;
+    flex-shrink: 0;
+}
+
+/* a card header whose trailing controls may wrap to a second line */
+.lh-wrap-header {
+    flex-wrap: wrap;
+}
+
+/* copyable model names: plain text that acts as a button */
+.model-name-button {
+    border: 0;
+    padding: 0;
+    background: none;
+    color: var(--text);
+    font: inherit;
+    font-weight: 500;
+    text-align: left;
+    cursor: pointer;
+    overflow-wrap: anywhere;
+}
+
+.model-name-label.is-copied {
+    font-style: italic;
+    color: var(--accent);
+}
+
+/* header toolbar (search / pull input / buttons) pushed to the far end */
+.lh-header-tools {
+    margin-left: auto;
+}
+
+.lh-header-tools druid-search {
+    width: 160px;
+}
+
+.lh-header-tools input[type="text"] {
+    width: 180px;
+}
+
+/* progress strip (pull / update / deploy): a standing .df-alert whose two rows
+   stack, sitting flush against the card header instead of floating in it */
+.lh-progress {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+    margin: 0;
+    border-width: 0 0 1px 3px;
+    border-radius: 0;
+}
+
+.lh-progress-row {
+    flex-wrap: nowrap;
+    justify-content: space-between;
+    font-size: 0.85rem;
+}
+
+/* a long model or file name truncates with an ellipsis (full text in the
+   title) instead of pushing the right-hand figures onto a second line */
+.lh-progress-row > :first-child,
+.lh-progress-detail {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.lh-progress-row > :last-child {
+    flex-shrink: 0;
+}
+
+.lh-progress-detail {
+    font-size: 0.8rem;
+}
+
+/* waiting deploys under the progress bar */
+.lh-queue {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding-top: 6px;
+    border-top: 1px solid var(--border);
+    font-size: 0.85rem;
+}
+
+.lh-queue-row {
+    flex-wrap: nowrap;
+    gap: 8px;
+}
+
+.lh-queue-repo {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* ---------- models table ---------- */
+
+/* keep Params on one line (e.g. "395.9 MB" wraps at its space when the column
+   is narrow); the Capabilities column absorbs the freed width */
+#models-table td:nth-child(3) {
+    white-space: nowrap;
+}
+
+.lh-row-actions {
+    flex-wrap: nowrap;
+    justify-content: flex-end;
+}
+
+/* icon buttons that act destructively / warningly hover in their own color
+   (druid-icon-button themes via the documented --df-icon-btn-* hooks) */
+druid-icon-button.df-danger {
+    --df-icon-btn-hover-color: var(--danger);
+    --df-icon-btn-hover-bg: var(--danger-soft);
+}
+
+/* pin / update / redeploy and the deploy-tab toolbar (non-destructive) icon
+   buttons hover in accent */
+druid-icon-button.lh-pin,
+druid-icon-button.update-btn,
+druid-icon-button.lh-redeploy,
+druid-icon-button.lh-deploy-btn,
+#hf-reset-sort-btn,
+#hf-clear-results-btn {
+    --df-icon-btn-hover-color: var(--accent);
+    --df-icon-btn-hover-bg: var(--accent-soft);
+}
+
+/* badge group: wrap onto multiple rows with an even gap so wrapped pills don't
+   touch (inline badges have no row-gap of their own) */
+.lh-badges {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    vertical-align: middle;
+}
+
+/* pinned models get an accent-filled pin icon */
+druid-icon-button.lh-pin-active {
+    --df-icon-btn-color: var(--accent);
+}
+
+druid-icon-button.lh-pin-active svg {
+    fill: currentColor;
+}
+
+/* env pins are shown but locked */
+.lh-locked {
+    opacity: 0.55;
+    pointer-events: none;
+}
+
+/* ---------- deploy tab (HF browse + staged cache) ---------- */
+
+/* browse card stacked over the staged card, panel scrolls as one column.
+   (.df-tab-panel.active already provides the flex column — only add the gap,
+   an unconditional display here would un-hide the inactive panel) */
+.lh-deploy-panel {
+    gap: 16px;
+}
+
+/* wider than the shared 160px header-search so the placeholder fits */
+#hf-search-input {
+    width: 260px;
+}
+
+.lh-hf-row {
+    cursor: pointer;
+}
+
+.lh-hf-link {
+    color: var(--text);
+    font-weight: 500;
+    text-decoration: none;
+}
+
+.lh-hf-link:hover {
+    color: var(--accent);
+    text-decoration: underline;
+}
+
+/* Quant list lives in a <druid-popover> (trigger: <druid-button
+   variant="outline">). The popover's own panel supplies the dropdown look
+   (dark bg, accent border, --radius, shadow, top-layer) and the outline button
+   supplies the trigger look — both framework-owned now, so only the inner
+   table content is styled here. */
+
+/* The outline variant is accent-bordered at rest; we want the quant trigger
+   quiet — neutral --border at rest, accent only on hover or while its popover
+   is open — so you can see which one is open. The variant's border-color reads
+   var(--df-accent), so overriding that token on the trigger retints just the
+   border (bg is untouched). .is-open is toggled from the popover-toggle handler. */
+.lh-quant-trigger {
+    --df-accent: var(--border);
+}
+
+.lh-quant-trigger:hover,
+.lh-quant-trigger.is-open {
+    --df-accent: var(--accent);
+}
+
+/* Aligned columns: label / size / shards stack under each other. Columns size
+   to content (width:auto + nowrap cells). */
+.lh-quant-poptable {
+    width: auto;
+    border-collapse: collapse;
+    font-size: 0.85rem;
+}
+
+.lh-quant-pop-row {
+    cursor: pointer;
+}
+
+.lh-quant-pop-row td {
+    padding: 6px 10px;
+    white-space: nowrap;
+    vertical-align: middle;
+}
+
+.lh-quant-pop-row:hover td {
+    background: var(--bg-hover);
+}
+
+/* Round only the row's outer corners so the hover reads as one clean pill
+   across the whole row, not a rounded box per cell. */
+.lh-quant-pop-row td:first-child {
+    border-top-left-radius: var(--radius-sm);
+    border-bottom-left-radius: var(--radius-sm);
+}
+
+.lh-quant-pop-row td:last-child {
+    border-top-right-radius: var(--radius-sm);
+    border-bottom-right-radius: var(--radius-sm);
+}
+
+/* right-align the size column so the numbers line up */
+.lh-quant-size {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+.lh-quant-pop-empty {
+    padding: 8px 10px;
+    font-size: 0.85rem;
+    white-space: nowrap;
+}
+
+.lh-quant-meta {
+    color: var(--text-muted);
+    white-space: nowrap;
+}
+
+.lh-load-more {
+    justify-content: center;
+    padding: 10px;
+}
+
+/* ---------- navbar endpoint switcher ---------- */
+
+/* the active endpoint shown as a soft design-token chip beside the switcher:
+   a bordered pill with an accent dot marking the live endpoint */
+.lh-endpoint-url {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    max-width: 300px;
+    padding: 5px 10px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--bg);
+}
+
+.lh-endpoint-url:empty {
+    display: none;
+}
+
+.lh-endpoint-dot {
+    flex-shrink: 0;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.lh-endpoint-url .model-name-button {
+    min-width: 0;
+    font-size: 0.8rem;
+    font-weight: 500;
+    color: var(--text-muted);
+}
+
+.lh-endpoint-url .model-name-label {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* ---------- prompt tab ---------- */
+
+#chat-model-select {
+    min-width: 200px;
+}
+
+/* collapsible options grid — .df-grid auto-fills; only the strip's own chrome
+   and the denser column floor are app business */
+.lh-options {
+    grid-template-columns: repeat(auto-fill, minmax(min(150px, 100%), 1fr));
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--border);
+}
+
+.lh-options-buttons {
+    align-items: flex-end;
+}
+
+/* Num Context lock: shown when a pinned model is selected. The field is
+   disabled because a pinned model's ctx is fixed by its Modelfile bake (see
+   syncCtxLockForModel / bake_ctx); make that obvious instead of leaving a dead,
+   unclickable input the user has to guess about. */
+.lh-ctx-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    /* keep "Num Context" + the pinned badge on one line — in a thin grid cell
+       the text items would otherwise wrap at their internal spaces */
+    white-space: nowrap;
+}
+
+.lh-ctx-lock {
+    flex-shrink: 0;
+}
+
+/* Make the disabled input read as "locked", not broken. */
+.lh-ctx-locked input {
+    cursor: not-allowed;
+    opacity: 0.7;
+    border-color: var(--accent-soft);
+}
+
+/* The ctx input is wrapped in a <druid-tooltip> (the "why it's locked" bubble).
+   Keep the wrapper a full-width block so the input still fills the options-grid
+   cell — as a stretched flex-item it spans the column, and input:100% fills it.
+   The bubble itself renders in the top layer, unaffected by this. */
+.lh-ctx-tip {
+    display: block;
+}
+
+/* the input is nested in the tooltip, not a direct .df-field child, so the
+   field's stretch doesn't reach it */
+.lh-ctx-tip input {
+    width: 100%;
+}
+
+.lh-chat-body {
+    display: flex;
+    flex-direction: column;
+}
+
+.lh-chat-messages {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 14px;
+}
+
+.lh-chat-footer {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+}
+
+.lh-chat-inputrow {
+    flex-wrap: nowrap;
+    align-items: flex-end;
+}
+
+.lh-chat-inputrow druid-textarea {
+    flex: 1;
+}
+
+/* thinking accordion inside a chat bubble */
+.lh-thinking {
+    margin-bottom: 8px;
+    font-size: 0.85rem;
+}
+
+.lh-thinking summary {
+    cursor: pointer;
+    color: var(--text-muted);
+}
+
+.lh-thinking-body {
+    margin: 6px 0 0 10px;
+    padding-left: 10px;
+    border-left: 2px solid var(--border);
+    color: var(--text-muted);
+}
+
+/* pending image attachments above the chat input (the row is a .df-row) */
+.lh-attachment {
+    position: relative;
+}
+
+.lh-attachment img {
+    width: 64px;
+    height: 64px;
+    object-fit: cover;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+}
+
+.lh-attachment druid-icon-button {
+    position: absolute;
+    top: -8px;
+    right: -8px;
+}
+
+/* images shown inside a sent chat bubble */
+.lh-message-image {
+    max-width: 160px;
+    max-height: 160px;
+    object-fit: cover;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    margin: 0 6px 6px 0;
+}
+
+/* ---------- dialogs ---------- */
+
+#system-prompt-modal {
+    width: min(560px, 92vw);
+}
+
+/* ---------- markdown rendering (chat bubbles) ----------
+   Headings, p, lists, code and pre come from the framework's element
+   typography; only what a chat bubble needs differently lives here. */
+
+.markdown-content > :last-child {
+    margin-bottom: 0;
+}
+
+.markdown-content h1:first-child,
+.markdown-content h2:first-child,
+.markdown-content h3:first-child,
+.markdown-content h4:first-child {
+    margin-top: 0;
+}
+
+.markdown-content blockquote {
+    margin: 0 0 10px;
+    padding-left: 12px;
+    border-left: 3px solid var(--border-strong);
+    color: var(--text-muted);
+}
+
+.markdown-content a {
+    color: inherit;
+    text-decoration: underline;
+}
+
+.markdown-content table {
+    width: 100%;
+    margin: 0 0 10px;
+    border-collapse: collapse;
+    font-size: 0.85rem;
+}
+
+.markdown-content table th,
+.markdown-content table td {
+    padding: 6px 10px;
+    text-align: left;
+    border: 1px solid var(--border);
+}
+
+.markdown-content table th {
+    background: var(--bg-header);
+    font-weight: 600;
+}
+
+.lh-actions-col {
+    width: 110px;
+}
+
+/* ---------- narrow viewports ----------
+   druids' flow tier (<=900px) already releases the fixed shell: the document
+   scrolls, panels size to their content, .fill / .fit stop capping and the
+   sticky rail goes static. Only the app's own two-column grid and its header
+   toolbars are left to answer. */
+
+@media (max-width: 900px) {
+    /* minmax(0,…), not 1fr: a plain 1fr floors at its content's min-content
+       width, so the wide table would stretch the track and the rail with it */
+    .lh-shell {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    /* Nothing stretches the chat card in flow mode, so the message list has to
+       carry its own height — and its own ceiling. Uncapped it grows with the
+       conversation, which makes the document the scroller: the list stops being
+       scrollable (so scrollChatToBottom silently does nothing) and the composer
+       below it drifts off screen. Same cap the framework puts on druid-log-view. */
+    .lh-chat-messages {
+        min-height: 40dvh;
+        max-height: 65dvh;
+    }
+
+    /* header toolbars wrap under the title instead of squeezing their inputs */
+    .lh-header-tools {
+        flex-wrap: wrap;
+        margin-left: 0;
+    }
+
+    .lh-header-tools druid-search,
+    .lh-header-tools input[type="text"],
+    #hf-search-input,
+    #chat-model-select {
+        flex: 1 1 140px;
+        min-width: 0;
+        width: auto;
+    }
+}

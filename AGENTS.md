@@ -1,0 +1,136 @@
+# Lamahub — agent reference
+
+<!--
+Template for a consumer app of the druids design framework. Copy this file to the
+consumer app's repo root as AGENTS.md, replace <App>/<app>, and fill the Layout
+section with the app's own files. Everything between the druids:generic markers is
+generic — keep it as-is so every consumer app follows the same rules, and re-copy it
+from this template whenever the framework is updated (step 3 of "On resuming edits").
+The substitutions to re-apply after a re-copy are `<App>`, `<app>` and
+`<framework-repo-url>`.
+This is the pip / FastAPI + Jinja variant; an npm consumer (a Lit app, a browser
+extension) uses AGENTS.consumer.npm.md instead.
+-->
+
+Lamahub is a **consumer of the `druids` design framework** (pip name `druidforms`,
+import name `druids`). It is pure Python: FastAPI + Jinja. It ships **no JS build
+step** — all design, theming, the app shell, login/session and every `<druid-*>`
+element come from the installed `druids` package.
+
+<!-- druids:generic:start — everything down to druids:generic:end is copied verbatim from
+     the framework's template (druids/AGENTS.consumer.md). Do not edit it here: the framework
+     owns it, and step 3 of "On resuming edits" overwrites it on every framework update.
+     The only edits that survive are the placeholder substitutions listed above. App-specific
+     content goes below druids:generic:end. -->
+
+## On resuming edits
+
+1. **Create a venv** and activate it: `python -m venv .venv && . .venv/bin/activate`.
+2. **Update the framework** into it from its git URL: `pip install "druidforms @ git+https://github.com/creepytree/druidforms.git"`
+3. **Re-sync this file's generic block.** The framework ships the template this file was made
+   from. Replace everything between the `druids:generic:start` and `druids:generic:end` markers
+   below with the same block from `<site-packages>/druids/AGENTS.consumer.md`, then re-apply the
+   substitutions listed in the header comment (`<App>`, `<app>`, `<framework-repo-url>`). If the
+   blocks are already identical this is a no-op. Check `README.consumer.md` the same way.
+   Skipping this is how an app ends up following rules the framework retired two versions ago.
+4. **Study the CHANGELOG.md** Compare local version with latest pull and check if the project needs patches on the new version or would gain quality, simplification or a reduction in line-count by patching.
+5. **Read GAPS_FIX.md** if you came from a previous run and reported gaps.
+6. **Add bugs, gaps, wanted patches to GAPS.md** This gets consumed by the Agent processing the framework. Overwrite with fresh content on a new edit roundtrip if the file notes a resolved state.
+7. **Remove resolved GAPS_FIX.md** if you are done.
+
+## Startup new project
+
+**On the first turn, before writing any UI, install the framework and study it:**
+
+1. **Create a venv** and activate it: `python -m venv .venv && . .venv/bin/activate`.
+2. **Install the framework** into the venv `pip install "druidforms @ git+https://github.com/creepytree/druidforms.git"`
+3. **Study the framework** in the venv:
+   - `<site-packages>/druids/AGENTS.md` — orientation: how to wire the app, page
+     templates, `df-*` classes, and the light-DOM composition patterns.
+   - `<site-packages>/druids/static/druids.index.txt` — **grep this first**: one line per
+     component, `df-*` class, design token and JS API, with tags and a summary. Its header
+     lists the tag vocabulary, so `grep " forms"` or `grep "^class"` finds what exists.
+   - `<site-packages>/druids/static/druids.components.json` — the **exact contract**
+     for every `<druid-*>` and `window.druids` API: attributes, events (with `detail`
+     shape), slots, methods, consumed CSS vars, gotchas, example. Read this instead of
+     grepping the bundle. `druids.registry.json` = what tags/APIs exist + since which
+     version; `druids.tokens.json` = theme tokens with roles + defaults.
+   Build UI only from what these document.
+4. Write AGENTS.consumer.md in the workspace root of the consumer
+5. Write README.consumer.md for the consumer, @placeholder@ define allowed changes, keep it strict on this
+
+## Do always
+
+> **Build on the framework, never reinvent it.** Before adding markup, CSS or JS, check
+> whether druids already provides it: a `<druid-*>` component, a `df-*` class, a design
+> token (`--accent`, `--border`, `--bg-raised`, `--radius`, …) or `druids.toast()` /
+> `druids.applyAccent()`. App CSS must theme with those tokens, not hardcoded colors,
+> and must not re-implement a component the framework already ships.
+>
+> **Keep this app matching the framework's current API.** The shipped contract manifest
+> (`druids/static/druids.index.txt` + `druids.components.json` + `.registry.json`) is the source of truth. If a
+> druids component, attribute, event or class was renamed or removed upstream, update this
+> app's templates/CSS/JS to match in the same change.
+>
+> **Missing or wrong in the design system → fix it upstream, not here.** If a UI need
+> isn't met, add or change the component in the `druids` framework repo (rebuild its
+> bundle there) rather than growing a local one-off. Only genuinely app-specific UI
+> lives in this app.
+
+<!-- druids:generic:end -->
+
+## Layout
+
+- `lamahub/shell.py` — the single `Druids(...)` instance (brand, version, login from
+  `LOGIN`/`LOGIN_USER`/`LOGIN_PW` env, `templates_dir`); `lamahub/app.py` calls
+  `druids.install(lamahub)` and mounts the app's own `/static`.
+- `lamahub/routes.py` — pages render via `druids.templates`; `lamahub/api.py` is the
+  JSON/streaming API under `/api` (models, chat, logs, endpoints).
+- `lamahub/events.py` — Socket.IO handlers; handshakes are auth-checked against
+  `druids.auth` because Socket.IO is mounted outside the FastAPI middleware stack.
+- `lamahub/templates/main.jinja2` — the single page; extends `druids/base.jinja2` and
+  fills the `styles`, `actions`, `content`, `scripts` blocks with `<druid-*>` tags
+  (the `<druid-tabs>` strip lives above the panels in `content`, not in the navbar;
+  tabs: Models / Deploy / Prompt / Log; the Log tab is a plain `<druid-log-view>`).
+  The navbar (from `druids/base.jinja2`) renders all three theme controls itself —
+  `<druid-theme-toggle>` (auto/light/dark, since 1.0.15), `<druid-flavor-picker>` and
+  `<druid-accent-picker>` — so the app adds no picker markup; app CSS must use the
+  surface tokens (`--bg`, `--bg-raised`, `--border`, `--text`, …) so both light mode and
+  the flavor tint reach it. The only non-token styling is the vendored highlight.js
+  theme: `main.jinja2` links `github-dark` + `github` and `syncCodeTheme()` in `app.js`
+  enables the one matching `<html data-theme>`.
+  All three data tables are `<druid-table sortable>` around a
+  `<table class="df-table wide">` — sorting keys off a `<th data-key>` and a cell's
+  `data-value`, `<th data-sort="none">` opts a column out, `wide` gives the table the
+  width floor its scroll container needs to scroll x on a phone, and the component
+  reapplies sort + filter after every rebuild. The stats rail is a
+  `.df-stack.sticky`; a table card is `.df-card.fit` (sizes to its rows, caps at the
+  panel) rather than `.fill`; card headers carry `.section` in the panels and `.quiet`
+  on the rail tiles.
+- `lamahub/static/css/app.css` — only app-specific UI (dashboard grid, quant popover,
+  chat sizing, markdown deltas), all token-driven (`--accent`, `--border`, `--bg-dim`,
+  `--radius-sm`, …). Layout uses the framework primitives (`.df-row`, `.df-grid`,
+  `.df-field`, `.df-alert`, `.df-empty`) rather than hand-rolled flexbox.
+  Framework CSS is prefixed `df-`; app class names are prefixed `lh-`. Mobile is the
+  framework's flow tier (<=900px, `body:not(.df-shell-fixed)`); the app adds only its
+  own grid collapse, chat height and toolbar wrapping on top of it.
+- `lamahub/static/js/` — app logic (`app.js`, `models.js`, `chat.js`, `deploy.js`,
+  `endpoints.js`, `utils.js`, `requests.js`, `icons.js`) plus vendored `socket.io`,
+  `markdown-it`, `highlight.js`. Notifications go through `druids.toast()`; confirm/prompt
+  use `druids.confirm()` / `druids.prompt()`, and multi-field asks (the pin dialog:
+  context length + model type) use `druids.form()`, leaning on the fields' own
+  `required`/`min`/`step` (enforced at submit) rather than a hand-written
+  `validate` (no native `alert`/`confirm`/`prompt`, no hand-rolled `modal()`);
+  icons are Lucide SVGs registered via `druids.registerIcons()` in `icons.js` and
+  referenced as `<druid-icon name>` / `<druid-icon-button icon>`; generated markup
+  uses `<druid-*>` elements and `lh-*` classes.
+- `lamahub/services/` — Ollama client (`ollama.py`, all HTTP through `_request` /
+  `_stream_lines`), endpoint registry, fixed-model store, HF browse (`hf_hub.py`) and
+  deploy pipeline + `DeployQueue` (`hf_deploy.py`), staging cache, logging; the stores share
+  `jsonfile.py` for atomic JSON writes.
+- Client data flow: `fetchModels()` in `models.js` is the one `/models` fetch — it fills
+  `lastModels`, which the models table, rail stats, chat selector and the Deploy tab's
+  "deployed" check all read. The assistant bubble carries `<druid-chat-message streaming>`
+  (framework dots) until its turn ends. Streaming calls (chat, pull, update) go through
+  `streamSSE()` in `requests.js`; `placeholderRow` / `renderProgress` / `escapeAttr`
+  live in `utils.js`.
