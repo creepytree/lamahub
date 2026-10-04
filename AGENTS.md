@@ -26,7 +26,13 @@ element come from the installed `druids` package.
 ## On resuming edits
 
 1. **Create a venv** and activate it: `python -m venv .venv && . .venv/bin/activate`.
-2. **Update the framework** into it from its git URL: `pip install "druidforms @ git+https://github.com/creepytree/druidforms.git"`
+2. **Update the framework** into it from its git URL: `pip install -U "druidforms @ git+https://github.com/creepytree/druidforms.git"`.
+   The dependency stays unpinned — the framework is one commit, so every install takes the
+   current release and a patch needs no commit here. **A Dockerfile keeps one line right before its `pip install`:**
+   `ADD https://api.github.com/repos/creepytree/druidforms/git/refs/heads/main /tmp/druidforms.ref`.
+   Docker re-checks that URL on every build and its content is the framework's current commit,
+   so a framework release invalidates the cached install layer — without it a rebuild with an
+   unchanged `requirements.txt` silently keeps the old framework.
 3. **Re-sync this file's generic block.** The framework ships the template this file was made
    from. Replace everything between the `druids:generic:start` and `druids:generic:end` markers
    below with the same block from `<site-packages>/druids/AGENTS.consumer.md`, then re-apply the
@@ -43,7 +49,9 @@ element come from the installed `druids` package.
 **On the first turn, before writing any UI, install the framework and study it:**
 
 1. **Create a venv** and activate it: `python -m venv .venv && . .venv/bin/activate`.
-2. **Install the framework** into the venv `pip install "druidforms @ git+https://github.com/creepytree/druidforms.git"`
+2. **Install the framework** into the venv: `druidforms @ git+https://github.com/creepytree/druidforms.git` in
+   `requirements.txt` (unpinned — see step 2 of *On resuming edits*, including the Dockerfile line),
+   then `pip install -r requirements.txt`
 3. **Study the framework** in the venv:
    - `<site-packages>/druids/AGENTS.md` — orientation: how to wire the app, page
      templates, `df-*` classes, and the light-DOM composition patterns.

@@ -7,6 +7,10 @@ COPY lamahub /app/lamahub
 COPY pyproject.toml /app/pyproject.toml
 COPY requirements.txt /app/requirements.txt
 
+# a framework release moves this ref; Docker re-checks a remote ADD on every build, so the
+# install below re-runs exactly when the framework changed (unpinned dependency)
+ADD https://api.github.com/repos/creepytree/druidforms/git/refs/heads/main /tmp/druidforms.ref
+
 RUN pip install /app
 
 WORKDIR /app
